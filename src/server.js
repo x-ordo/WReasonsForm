@@ -14,6 +14,7 @@ const { poolPromise, mssql } = require('./db');
 const { v4: uuidv4 } = require('uuid');
 const FileType = require('file-type');
 const cron = require('node-cron');
+const { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, Table, TableRow, TableCell, WidthType } = require('docx');
 require('dotenv').config();
 
 // 타이밍 사이드채널 방어용 더미 해시 (존재하지 않는 유저 요청 시 bcrypt 연산 균등화)
@@ -52,25 +53,62 @@ const FIELD_LABELS = {
     merchant_type: '가맹점 코드'
 };
 
-// Telegram notification helper (fire-and-forget, no extra dependencies)
+// ── 식별코드 생성 (MAX 기반 + UNIQUE 제약 재시도) ──
+async function generateRequestCode(poolOrTx) {
+    const date = new Date();
+    const datePrefix = `${date.getFullYear().toString().slice(-2)}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}`;
+
+    const seqResult = await poolOrTx.request()
+        .input('prefix', mssql.NVarChar, `${datePrefix}-%`)
+        .query("SELECT ISNULL(MAX(CAST(SUBSTRING(request_code, 8, 3) AS INT)), 0) + 1 AS next_seq FROM Requests WHERE request_code LIKE @prefix");
+    let nextSeq = seqResult.recordset[0].next_seq;
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const rand = crypto.randomBytes(2).toString('hex').toUpperCase().slice(0, 3);
+        const requestCode = `${datePrefix}-${String(nextSeq).padStart(3, '0')}-${rand}`;
+        try {
+            // 유효성만 확인 — 실제 INSERT 시 UNIQUE 제약이 동시성 가드 역할
+            const dup = await poolOrTx.request()
+                .input('code', mssql.NVarChar, requestCode)
+                .query('SELECT 1 FROM Requests WHERE request_code = @code');
+            if (dup.recordset.length === 0) return requestCode;
+            nextSeq++;
+        } catch (err) {
+            if (attempt < 4) { nextSeq++; continue; }
+            throw err;
+        }
+    }
+    throw new Error('식별코드 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+}
+
+// Telegram notification helper (fire-and-forget, supports multiple chats/channels and topics)
 async function sendTelegramNotification(message) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
-    if (!token || !chatId) return;
-    try {
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' })
-        });
-    } catch (err) { console.error('Telegram notification failed:', err.message); }
+    const chatIds = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(s => s.trim()).filter(Boolean);
+    const threadId = process.env.TELEGRAM_THREAD_ID;
+    if (!token || chatIds.length === 0) return;
+
+    // Send to all configured chat IDs (User, Group, or Channel)
+    for (const chatId of chatIds) {
+        try {
+            const payload = { chat_id: chatId, text: message, parse_mode: 'HTML' };
+            if (threadId) payload.message_thread_id = threadId;
+
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } catch (err) { console.error(`Telegram notification failed for chat ${chatId}:`, err.message); }
+    }
 }
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust proxy only if behind a reverse proxy (set TRUST_PROXY=1 in .env)
-if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
+// Trust proxy: disabled (no reverse proxy in front of this server)
+// When trust proxy is enabled without an actual proxy, req.ip can return incorrect values.
+// app.set('trust proxy', 1);
 
 // Security headers with CSP whitelist for CDN resources
 app.use(helmet({
@@ -83,20 +121,23 @@ app.use(helmet({
                 "https://code.jquery.com",
                 "https://cdn.datatables.net",
                 "https://cdnjs.cloudflare.com"],
+            scriptSrcAttr: ["'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'",
                 "https://cdn.tailwindcss.com",
                 "https://cdn.jsdelivr.net",
                 "https://cdn.datatables.net"],
             imgSrc: ["'self'", "data:", "blob:"],
             fontSrc: ["'self'", "https://cdn.jsdelivr.net"],
-            connectSrc: ["'self'"],
+            connectSrc: ["'self'", "https://cdn.jsdelivr.net"],
             objectSrc: ["'none'"],
             frameAncestors: ["'self'"],
+            upgradeInsecureRequests: null,
         }
     },
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
-    originAgentCluster: false
+    originAgentCluster: false,
+    strictTransportSecurity: false,
 }));
 
 // Middleware
@@ -360,11 +401,11 @@ function getAllUploadedFiles(req) {
 // --- Data APIs ---
 
 // Submit Request (Public)
-app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 5 }]), fixUploadedFileNames, validateFileMagic, async (req, res) => {
+app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 1 }]), fixUploadedFileNames, validateFileMagic, async (req, res) => {
     try {
         // 서버 입력값 검증
         const d = req.body;
-        const required = ['applicant_name', 'applicant_phone', 'request_date', 'deposit_date', 'deposit_amount', 'bank_name', 'refund_account', 'refund_account_name', 'contractor_type', 'merchant_type'];
+        const required = ['applicant_name', 'applicant_phone', 'deposit_date', 'deposit_amount', 'bank_name', 'refund_account', 'contractor_type', 'merchant_type'];
         for (const field of required) {
             if (!d[field] || !d[field].trim()) {
                 cleanupUpload(req);
@@ -377,62 +418,52 @@ app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', 
         if (!['true', '1', 'on'].includes(d.terms_agreed)) { cleanupUpload(req); return res.status(400).json({ success: false, error: '개인정보 활용 동의는 필수입니다.' }); }
         const depositFiles = (req.files && req.files.deposit_files) || [];
         const idCardFiles = (req.files && req.files.id_card_files) || [];
-        if (depositFiles.length === 0) { cleanupUpload(req); return res.status(400).json({ success: false, error: '입금내역서 파일은 최소 1개 필수입니다.' }); }
+        if (depositFiles.length === 0) { cleanupUpload(req); return res.status(400).json({ success: false, error: '입출금거래내역서 파일은 최소 1개 필수입니다.' }); }
         if (idCardFiles.length === 0) { cleanupUpload(req); return res.status(400).json({ success: false, error: '신분증 파일은 최소 1개 필수입니다.' }); }
-        if (new Date(d.deposit_date) > new Date(d.request_date)) { cleanupUpload(req); return res.status(400).json({ success: false, error: '입금일자는 신청일자와 같거나 이전이어야 합니다.' }); }
 
         const pool = await poolPromise;
-        const date = new Date();
-        const datePrefix = `${date.getFullYear().toString().slice(-2)}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}`;
-
-        // 당일 최대 순번 조회 후 +1, 암호학적 랜덤 3자리 추가 (추측 방지)
-        const seqResult = await pool.request()
-            .input('prefix', mssql.NVarChar, `${datePrefix}-%`)
-            .query("SELECT COUNT(*) AS cnt FROM Requests WHERE request_code LIKE @prefix");
-        const nextSeq = (seqResult.recordset[0].cnt || 0) + 1;
-        const rand = crypto.randomBytes(2).toString('hex').toUpperCase().slice(0, 3);
-        const requestCode = `${datePrefix}-${String(nextSeq).padStart(3, '0')}-${rand}`;
-
-        const allFiles = [...depositFiles, ...idCardFiles];
-        const firstFile = allFiles.length > 0 ? allFiles[0].filename : null;
-
-        const insertResult = await pool.request()
-            .input('requestCode', mssql.NVarChar, requestCode)
-            .input('requestDate', mssql.Date, d.request_date)
-            .input('depositDate', mssql.Date, d.deposit_date)
-            .input('depositAmount', mssql.Decimal, d.deposit_amount.replace(/\D/g, ''))
-            .input('bankName', mssql.NVarChar, d.bank_name)
-            .input('userAccount', mssql.NVarChar, d.refund_account.replace(/\D/g, ''))
-            .input('userAccountName', mssql.NVarChar, d.refund_account_name)
-            .input('contractorCode', mssql.NVarChar, d.contractor_type)
-            .input('merchantCode', mssql.NVarChar, d.merchant_type)
-            .input('applicantName', mssql.NVarChar, d.applicant_name)
-            .input('applicantPhone', mssql.NVarChar, d.applicant_phone.replace(/\D/g, ''))
-            .input('details', mssql.NVarChar, d.details)
-            .input('idCardFile', mssql.NVarChar, firstFile)
-            .input('termsAgreed', mssql.Bit, ['true', '1', 'on'].includes(d.terms_agreed) ? 1 : 0)
-            .input('termsIp', mssql.NVarChar, (req.ip || '').replace(/^::ffff:/, '') || null)
-            .query(`INSERT INTO Requests (request_code, request_date, deposit_date, deposit_amount, bank_name, user_account, user_account_name, contractor_code, merchant_code, applicant_name, applicant_phone, details, id_card_file, terms_agreed, terms_ip)
-                    OUTPUT INSERTED.id
-                    VALUES (@requestCode, @requestDate, @depositDate, @depositAmount, @bankName, @userAccount, @userAccountName, @contractorCode, @merchantCode, @applicantName, @applicantPhone, @details, @idCardFile, @termsAgreed, @termsIp)`);
-
-        const requestId = insertResult.recordset[0].id;
-
-        // Insert files into RequestFiles with category
+        const transaction = new mssql.Transaction(pool);
+        await transaction.begin();
         try {
+            const requestCode = await generateRequestCode(transaction);
+
+            const allFiles = [...depositFiles, ...idCardFiles];
+            const firstFile = allFiles.length > 0 ? allFiles[0].filename : null;
+
+            const insertResult = await transaction.request()
+                .input('requestCode', mssql.NVarChar, requestCode)
+                .input('depositDate', mssql.Date, d.deposit_date)
+                .input('depositAmount', mssql.Decimal, d.deposit_amount.replace(/\D/g, ''))
+                .input('bankName', mssql.NVarChar, d.bank_name)
+                .input('userAccount', mssql.NVarChar, d.refund_account.replace(/\D/g, ''))
+                .input('userAccountName', mssql.NVarChar, d.applicant_name)
+                .input('contractorCode', mssql.NVarChar, d.contractor_type)
+                .input('merchantCode', mssql.NVarChar, d.merchant_type)
+                .input('applicantName', mssql.NVarChar, d.applicant_name)
+                .input('applicantPhone', mssql.NVarChar, d.applicant_phone.replace(/\D/g, ''))
+                .input('details', mssql.NVarChar, d.details)
+                .input('idCardFile', mssql.NVarChar, firstFile)
+                .input('termsAgreed', mssql.Bit, ['true', '1', 'on'].includes(d.terms_agreed) ? 1 : 0)
+                .input('termsIp', mssql.NVarChar, (req.ip || '').replace(/^::ffff:/, '') || null)
+                .query(`INSERT INTO Requests (request_code, request_date, deposit_date, deposit_amount, bank_name, user_account, user_account_name, contractor_code, merchant_code, applicant_name, applicant_phone, details, id_card_file, terms_agreed, terms_ip)
+                        OUTPUT INSERTED.id
+                        VALUES (@requestCode, CAST(GETDATE() AS DATE), @depositDate, @depositAmount, @bankName, @userAccount, @userAccountName, @contractorCode, @merchantCode, @applicantName, @applicantPhone, @details, @idCardFile, @termsAgreed, @termsIp)`);
+
+            const requestId = insertResult.recordset[0].id;
+
             for (const f of depositFiles) {
                 const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-                await pool.request()
+                await transaction.request()
                     .input('requestId', mssql.Int, requestId)
                     .input('filename', mssql.NVarChar, f.filename)
                     .input('originalName', mssql.NVarChar, f.originalname)
                     .input('fileType', mssql.NVarChar, ext)
-                    .input('category', mssql.NVarChar, '입금내역서')
+                    .input('category', mssql.NVarChar, '입출금거래내역서')
                     .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
             }
             for (const f of idCardFiles) {
                 const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-                await pool.request()
+                await transaction.request()
                     .input('requestId', mssql.Int, requestId)
                     .input('filename', mssql.NVarChar, f.filename)
                     .input('originalName', mssql.NVarChar, f.originalname)
@@ -440,21 +471,23 @@ app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', 
                     .input('category', mssql.NVarChar, '신분증')
                     .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
             }
-        } catch (fileErr) {
-            console.error('File metadata insert error:', fileErr);
+
+            await transaction.commit();
+
+            // Fire-and-forget Telegram notification (before return, inside try)
+            const kstTime = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+            const amountFmt = Number(d.deposit_amount.replace(/\D/g, '')).toLocaleString('ko-KR');
+            const maskedName = d.applicant_name ? d.applicant_name.charAt(0) + '**' : '***';
+            sendTelegramNotification(
+                `<b>새 사유서 접수</b>\n식별코드: <code>${requestCode}</code>\n신청인: ${maskedName}\n파일: ${allFiles.length}개\n접수시간: ${kstTime}`
+            );
+
+            return res.json({ success: true, requestCode });
+        } catch (txErr) {
+            try { await transaction.rollback(); } catch (_) {}
             cleanupUpload(req);
-            return res.status(500).json({ success: false, error: '파일 정보 저장 중 오류가 발생했습니다. 사유서는 접수되었으나 파일 첨부에 실패했습니다.' });
+            throw txErr;
         }
-
-        res.json({ success: true, requestCode });
-
-        // Fire-and-forget Telegram notification
-        const kstTime = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
-        const amountFmt = Number(d.deposit_amount.replace(/\D/g, '')).toLocaleString('ko-KR');
-        const maskedName = d.applicant_name ? d.applicant_name.charAt(0) + '**' : '***';
-        sendTelegramNotification(
-            `<b>새 사유서 접수</b>\n식별코드: <code>${requestCode}</code>\n신청인: ${maskedName}\n파일: ${allFiles.length}개\n접수시간: ${kstTime}`
-        );
     } catch (err) {
         cleanupUpload(req);
         res.status(500).json({ success: false, error: classifyError(err, 'POST /api/request') });
@@ -471,7 +504,11 @@ const statusLimiter = rateLimit({
 });
 
 // Status Check (Public)
+const REQUEST_CODE_RE = /^\d{6}-\d{3}-[A-Z0-9]{3}$/;
 app.get('/api/status/:code', statusLimiter, async (req, res) => {
+    if (!REQUEST_CODE_RE.test(req.params.code)) {
+        return res.status(400).json({ success: false, error: '식별코드 형식이 올바르지 않습니다. (예: 260222-001-ABC)' });
+    }
     try {
         const pool = await poolPromise;
         const result = await pool.request()
@@ -479,7 +516,8 @@ app.get('/api/status/:code', statusLimiter, async (req, res) => {
             .query('SELECT applicant_name, status, created_at FROM Requests WHERE request_code = @code');
         if (result.recordset.length > 0) {
             const row = result.recordset[0];
-            res.json({ success: true, data: { ...row, applicant_name: row.applicant_name[0] + '**' } });
+            const name = row.applicant_name || '***';
+            res.json({ success: true, data: { ...row, applicant_name: name[0] + '**' } });
         } else res.status(404).json({ success: false, error: '해당 식별코드로 접수된 사유서를 찾을 수 없습니다.' });
     } catch (err) { res.status(500).json({ success: false, error: classifyError(err, 'GET /api/status') }); }
 });
@@ -489,8 +527,11 @@ app.get('/api/admin/requests', authMiddleware, async (req, res) => {
     try {
         const pool = await poolPromise;
         const result = await pool.request().query(`
-            SELECT r.*, (SELECT COUNT(*) FROM RequestFiles rf WHERE rf.request_id = r.id) AS file_count
-            FROM Requests r ORDER BY r.created_at DESC
+            SELECT r.*, ISNULL(fc.cnt, 0) AS file_count
+            FROM Requests r
+            LEFT JOIN (SELECT request_id, COUNT(*) AS cnt FROM RequestFiles GROUP BY request_id) fc
+              ON fc.request_id = r.id
+            ORDER BY r.created_at DESC
         `);
         res.json({ success: true, data: result.recordset });
     } catch (err) { res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/requests') }); }
@@ -507,6 +548,108 @@ app.get('/api/admin/request/:id', authMiddleware, async (req, res) => {
         data.files = files.recordset;
         res.json({ success: true, data });
     } catch (err) { res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/request/:id') }); }
+});
+
+app.get('/api/admin/request/:id/docx', authMiddleware, async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request().input('id', mssql.Int, req.params.id).query('SELECT * FROM Requests WHERE id = @id');
+        const data = result.recordset[0];
+        if (!data) return res.status(404).json({ success: false, error: '상세 정보를 찾을 수 없습니다.' });
+
+        const doc = new Document({
+            sections: [{
+                properties: {},
+                children: [
+                    new Paragraph({
+                        text: "반환 청구 사유서",
+                        heading: HeadingLevel.HEADING_1,
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 400 },
+                    }),
+                    new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: [
+                            new TableRow({
+                                children: [
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "식별코드", bold: true })] })], width: { size: 20, type: WidthType.PERCENTAGE }, shading: { fill: "F5F5F5" } }),
+                                    new TableCell({ children: [new Paragraph(data.request_code)], width: { size: 30, type: WidthType.PERCENTAGE } }),
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "진행상태", bold: true })] })], width: { size: 20, type: WidthType.PERCENTAGE }, shading: { fill: "F5F5F5" } }),
+                                    new TableCell({ children: [new Paragraph(data.status)], width: { size: 30, type: WidthType.PERCENTAGE } }),
+                                ],
+                            }),
+                            new TableRow({
+                                children: [
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "신청인", bold: true })] })], shading: { fill: "F5F5F5" } }),
+                                    new TableCell({ children: [new Paragraph(data.applicant_name)] }),
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "연락처", bold: true })] })], shading: { fill: "F5F5F5" } }),
+                                    new TableCell({ children: [new Paragraph(data.applicant_phone)] }),
+                                ],
+                            }),
+                            new TableRow({
+                                children: [
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "지사코드", bold: true })] })], shading: { fill: "F5F5F5" } }),
+                                    new TableCell({ children: [new Paragraph(data.contractor_code || "-")] }),
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "가맹점코드", bold: true })] })], shading: { fill: "F5F5F5" } }),
+                                    new TableCell({ children: [new Paragraph(data.merchant_code || "-")] }),
+                                ],
+                            }),
+                            new TableRow({
+                                children: [
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "신청일", bold: true })] })], shading: { fill: "F5F5F5" } }),
+                                    new TableCell({ children: [new Paragraph(new Date(data.request_date).toLocaleDateString('ko-KR'))] }),
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "입금일", bold: true })] })], shading: { fill: "F5F5F5" } }),
+                                    new TableCell({ children: [new Paragraph(new Date(data.deposit_date).toLocaleDateString('ko-KR'))] }),
+                                ],
+                            }),
+                            new TableRow({
+                                children: [
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "입금액", bold: true })] })], shading: { fill: "F5F5F5" } }),
+                                    new TableCell({ children: [new Paragraph(Number(data.deposit_amount).toLocaleString() + "원")], columnSpan: 3 }),
+                                ],
+                            }),
+                            new TableRow({
+                                children: [
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "사용계좌", bold: true })] })], shading: { fill: "F5F5F5" } }),
+                                    new TableCell({ children: [new Paragraph(`${data.bank_name} / ${data.user_account} / ${data.user_account_name}`)], columnSpan: 3 }),
+                                ],
+                            }),
+                        ],
+                    }),
+                    new Paragraph({ text: "", spacing: { before: 400 } }),
+                    new Paragraph({
+                        children: [new TextRun({ text: "상세 청구 사유", bold: true })],
+                        spacing: { after: 100 },
+                    }),
+                    new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: [
+                            new TableRow({
+                                children: [
+                                    new TableCell({
+                                        children: data.details ? data.details.split('\n').map(line => new Paragraph({ text: line, spacing: { before: 100, after: 100 } })) : [new Paragraph("내용 없음")],
+                                        margins: { top: 200, bottom: 200, left: 200, right: 200 }
+                                    }),
+                                ],
+                            }),
+                        ],
+                    }),
+                    new Paragraph({ text: "", spacing: { before: 800 } }),
+                    new Paragraph({
+                        text: `제출일시: ${new Date().toLocaleString('ko-KR')}`,
+                        alignment: AlignmentType.RIGHT,
+                        spacing: { after: 200 },
+                    }),
+                ],
+            }],
+        });
+
+        const buffer = await Packer.toBuffer(doc);
+        const filename = encodeURIComponent(`사유서_${data.request_code}.docx`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+        res.send(buffer);
+    } catch (err) { res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/request/:id/docx') }); }
 });
 
 // Add Files to Request (Admin) — 상세보기에서 카테고리별 파일 추가
@@ -530,9 +673,9 @@ app.post('/api/admin/request/:id/files', authMiddleware, upload.fields([{ name: 
         const addDepositFiles = (req.files && req.files.deposit_files) || [];
         const addIdCardFiles = (req.files && req.files.id_card_files) || [];
 
-        if ((countMap['입금내역서'] || 0) + addDepositFiles.length > 5) {
+        if ((countMap['입출금거래내역서'] || 0) + addDepositFiles.length > 5) {
             cleanupUpload(req);
-            return res.status(400).json({ success: false, error: '입금내역서는 최대 5개까지 첨부할 수 있습니다.' });
+            return res.status(400).json({ success: false, error: '입출금거래내역서는 최대 5개까지 첨부할 수 있습니다.' });
         }
         if ((countMap['신분증'] || 0) + addIdCardFiles.length > 5) {
             cleanupUpload(req);
@@ -546,7 +689,7 @@ app.post('/api/admin/request/:id/files', authMiddleware, upload.fields([{ name: 
                 .input('filename', mssql.NVarChar, f.filename)
                 .input('originalName', mssql.NVarChar, f.originalname)
                 .input('fileType', mssql.NVarChar, ext)
-                .input('category', mssql.NVarChar, '입금내역서')
+                .input('category', mssql.NVarChar, '입출금거래내역서')
                 .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
         }
         for (const f of addIdCardFiles) {
@@ -593,56 +736,50 @@ app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_f
         if (new Date(d.deposit_date) > new Date(d.request_date)) { cleanupUpload(req); return res.status(400).json({ success: false, error: '입금일자는 신청일자와 같거나 이전이어야 합니다.' }); }
 
         const pool = await poolPromise;
-        const date = new Date();
-        const datePrefix = `${date.getFullYear().toString().slice(-2)}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}`;
-
-        const seqResult = await pool.request()
-            .input('prefix', mssql.NVarChar, `${datePrefix}-%`)
-            .query("SELECT COUNT(*) AS cnt FROM Requests WHERE request_code LIKE @prefix");
-        const nextSeq = (seqResult.recordset[0].cnt || 0) + 1;
-        const rand = crypto.randomBytes(2).toString('hex').toUpperCase().slice(0, 3);
-        const requestCode = `${datePrefix}-${String(nextSeq).padStart(3, '0')}-${rand}`;
-
-        const adminDepositFiles = (req.files && req.files.deposit_files) || [];
-        const adminIdCardFiles = (req.files && req.files.id_card_files) || [];
-        const allAdminFiles = [...adminDepositFiles, ...adminIdCardFiles];
-        const firstFile = allAdminFiles.length > 0 ? allAdminFiles[0].filename : null;
-
-        const insertResult = await pool.request()
-            .input('requestCode', mssql.NVarChar, requestCode)
-            .input('requestDate', mssql.Date, d.request_date)
-            .input('depositDate', mssql.Date, d.deposit_date)
-            .input('depositAmount', mssql.Decimal, d.deposit_amount.replace(/\D/g, ''))
-            .input('bankName', mssql.NVarChar, d.bank_name)
-            .input('userAccount', mssql.NVarChar, d.refund_account.replace(/\D/g, ''))
-            .input('userAccountName', mssql.NVarChar, d.refund_account_name)
-            .input('contractorCode', mssql.NVarChar, d.contractor_type)
-            .input('merchantCode', mssql.NVarChar, d.merchant_type)
-            .input('applicantName', mssql.NVarChar, d.applicant_name)
-            .input('applicantPhone', mssql.NVarChar, d.applicant_phone.replace(/\D/g, ''))
-            .input('details', mssql.NVarChar, d.details || null)
-            .input('idCardFile', mssql.NVarChar, firstFile)
-            .input('termsAgreed', mssql.Bit, ['true', '1', 'on'].includes(d.terms_agreed) ? 1 : 0)
-            .input('termsIp', mssql.NVarChar, null)
-            .query(`INSERT INTO Requests (request_code, request_date, deposit_date, deposit_amount, bank_name, user_account, user_account_name, contractor_code, merchant_code, applicant_name, applicant_phone, details, id_card_file, terms_agreed, terms_ip)
-                    OUTPUT INSERTED.id
-                    VALUES (@requestCode, @requestDate, @depositDate, @depositAmount, @bankName, @userAccount, @userAccountName, @contractorCode, @merchantCode, @applicantName, @applicantPhone, @details, @idCardFile, @termsAgreed, @termsIp)`);
-
-        const requestId = insertResult.recordset[0].id;
+        const transaction = new mssql.Transaction(pool);
+        await transaction.begin();
         try {
+            const requestCode = await generateRequestCode(transaction);
+
+            const adminDepositFiles = (req.files && req.files.deposit_files) || [];
+            const adminIdCardFiles = (req.files && req.files.id_card_files) || [];
+            const allAdminFiles = [...adminDepositFiles, ...adminIdCardFiles];
+            const firstFile = allAdminFiles.length > 0 ? allAdminFiles[0].filename : null;
+
+            const insertResult = await transaction.request()
+                .input('requestCode', mssql.NVarChar, requestCode)
+                .input('requestDate', mssql.Date, d.request_date)
+                .input('depositDate', mssql.Date, d.deposit_date)
+                .input('depositAmount', mssql.Decimal, d.deposit_amount.replace(/\D/g, ''))
+                .input('bankName', mssql.NVarChar, d.bank_name)
+                .input('userAccount', mssql.NVarChar, d.refund_account.replace(/\D/g, ''))
+                .input('userAccountName', mssql.NVarChar, d.refund_account_name)
+                .input('contractorCode', mssql.NVarChar, d.contractor_type)
+                .input('merchantCode', mssql.NVarChar, d.merchant_type)
+                .input('applicantName', mssql.NVarChar, d.applicant_name)
+                .input('applicantPhone', mssql.NVarChar, d.applicant_phone.replace(/\D/g, ''))
+                .input('details', mssql.NVarChar, d.details || null)
+                .input('idCardFile', mssql.NVarChar, firstFile)
+                .input('termsAgreed', mssql.Bit, ['true', '1', 'on'].includes(d.terms_agreed) ? 1 : 0)
+                .input('termsIp', mssql.NVarChar, null)
+                .query(`INSERT INTO Requests (request_code, request_date, deposit_date, deposit_amount, bank_name, user_account, user_account_name, contractor_code, merchant_code, applicant_name, applicant_phone, details, id_card_file, terms_agreed, terms_ip)
+                        OUTPUT INSERTED.id
+                        VALUES (@requestCode, @requestDate, @depositDate, @depositAmount, @bankName, @userAccount, @userAccountName, @contractorCode, @merchantCode, @applicantName, @applicantPhone, @details, @idCardFile, @termsAgreed, @termsIp)`);
+
+            const requestId = insertResult.recordset[0].id;
             for (const f of adminDepositFiles) {
                 const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-                await pool.request()
+                await transaction.request()
                     .input('requestId', mssql.Int, requestId)
                     .input('filename', mssql.NVarChar, f.filename)
                     .input('originalName', mssql.NVarChar, f.originalname)
                     .input('fileType', mssql.NVarChar, ext)
-                    .input('category', mssql.NVarChar, '입금내역서')
+                    .input('category', mssql.NVarChar, '입출금거래내역서')
                     .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
             }
             for (const f of adminIdCardFiles) {
                 const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-                await pool.request()
+                await transaction.request()
                     .input('requestId', mssql.Int, requestId)
                     .input('filename', mssql.NVarChar, f.filename)
                     .input('originalName', mssql.NVarChar, f.originalname)
@@ -650,13 +787,14 @@ app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_f
                     .input('category', mssql.NVarChar, '신분증')
                     .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
             }
-        } catch (fileErr) {
-            console.error('Admin file metadata insert error:', fileErr);
-            cleanupUpload(req);
-            return res.status(500).json({ success: false, error: '파일 정보 저장 중 오류가 발생했습니다.' });
-        }
 
-        res.json({ success: true, requestCode });
+            await transaction.commit();
+            return res.json({ success: true, requestCode });
+        } catch (txErr) {
+            try { await transaction.rollback(); } catch (_) {}
+            cleanupUpload(req);
+            throw txErr;
+        }
     } catch (err) {
         cleanupUpload(req);
         res.status(500).json({ success: false, error: classifyError(err, 'POST /api/admin/request') });
@@ -677,14 +815,9 @@ app.put('/api/admin/status', authMiddleware, async (req, res) => {
         }
 
         // 워크플로 전환 검증
-        const TRANSITIONS = {
-            '대기': ['접수', '반려'],
-            '접수': ['처리중', '반려'],
-            '처리중': ['완료', '반려'],
-            '완료': [],
-            '반려': ['대기']
-        };
-
+        // - '대기', '접수', '처리중', '반려'는 서로 자유롭게 이동 가능
+        // - 어떤 상태에서든 '완료'로 이동 가능
+        // - '완료' 상태가 되면 더 이상 변경 불가
         const pool = await poolPromise;
         const current = await pool.request().input('id', mssql.Int, id).query('SELECT status FROM Requests WHERE id = @id');
         if (current.recordset.length === 0) {
@@ -692,10 +825,12 @@ app.put('/api/admin/status', authMiddleware, async (req, res) => {
         }
 
         const currentStatus = current.recordset[0].status;
-        const allowed = TRANSITIONS[currentStatus] || [];
-        if (!allowed.includes(status)) {
-            return res.status(400).json({ success: false, error: `'${currentStatus}' 상태에서 '${status}'(으)로 변경할 수 없습니다.` });
+        
+        if (currentStatus === '완료') {
+            return res.status(400).json({ success: false, error: "'완료' 상태의 데이터는 수정할 수 없습니다." });
         }
+
+        if (currentStatus === status) return res.json({ success: true }); // 상태 변화 없음
 
         await pool.request().input('id', mssql.Int, id).input('status', mssql.NVarChar, status).query('UPDATE Requests SET status = @status WHERE id = @id');
         res.json({ success: true });
@@ -725,10 +860,18 @@ app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposi
             status: mssql.NVarChar
         };
 
-        // 입금일자 ≤ 신청일자 검증 (둘 다 전송된 경우)
-        if (d.deposit_date && d.request_date && new Date(d.deposit_date) > new Date(d.request_date)) {
-            cleanupUpload(req);
-            return res.status(400).json({ success: false, error: '입금일자는 신청일자와 같거나 이전이어야 합니다.' });
+        // 입금일자 ≤ 신청일자 검증 (하나만 전송되어도 DB 기존 값과 비교)
+        if (d.deposit_date || d.request_date) {
+            const existing = await pool.request().input('chkId', mssql.Int, id)
+                .query('SELECT request_date, deposit_date FROM Requests WHERE id = @chkId');
+            if (existing.recordset.length > 0) {
+                const reqDate = d.request_date || existing.recordset[0].request_date;
+                const depDate = d.deposit_date || existing.recordset[0].deposit_date;
+                if (reqDate && depDate && new Date(depDate) > new Date(reqDate)) {
+                    cleanupUpload(req);
+                    return res.status(400).json({ success: false, error: '입금일자는 신청일자와 같거나 이전이어야 합니다.' });
+                }
+            }
         }
 
         const setClauses = [];
@@ -774,9 +917,23 @@ app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposi
             }
         }
 
-        // Handle new file uploads with category
+        // Handle new file uploads with category (카테고리별 5개 제한 검증)
         const newDepositFiles = (req.files && req.files.deposit_files) || [];
         const newIdCardFiles = (req.files && req.files.id_card_files) || [];
+        if (newDepositFiles.length > 0 || newIdCardFiles.length > 0) {
+            const fileCounts = await pool.request().input('fReqId', mssql.Int, id)
+                .query("SELECT category, COUNT(*) AS cnt FROM RequestFiles WHERE request_id = @fReqId GROUP BY category");
+            const countMap = {};
+            fileCounts.recordset.forEach(r => { countMap[r.category] = r.cnt; });
+            if ((countMap['입출금거래내역서'] || 0) + newDepositFiles.length > 5) {
+                cleanupUpload(req);
+                return res.status(400).json({ success: false, error: '입출금거래내역서는 최대 5개까지 첨부할 수 있습니다.' });
+            }
+            if ((countMap['신분증'] || 0) + newIdCardFiles.length > 5) {
+                cleanupUpload(req);
+                return res.status(400).json({ success: false, error: '신분증은 최대 5개까지 첨부할 수 있습니다.' });
+            }
+        }
         for (const f of newDepositFiles) {
             const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
             await pool.request()
@@ -784,7 +941,7 @@ app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposi
                 .input('filename', mssql.NVarChar, f.filename)
                 .input('originalName', mssql.NVarChar, f.originalname)
                 .input('fileType', mssql.NVarChar, ext)
-                .input('category', mssql.NVarChar, '입금내역서')
+                .input('category', mssql.NVarChar, '입출금거래내역서')
                 .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
         }
         for (const f of newIdCardFiles) {
@@ -811,10 +968,10 @@ app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposi
         }
 
         await request.query(`UPDATE Requests SET ${setClauses.join(', ')} WHERE id = @id`);
-        res.json({ success: true });
+        return res.json({ success: true });
     } catch (err) {
         cleanupUpload(req);
-        res.status(500).json({ success: false, error: classifyError(err, 'PUT /api/admin/request/:id') });
+        return res.status(500).json({ success: false, error: classifyError(err, 'PUT /api/admin/request/:id') });
     }
 });
 
@@ -908,7 +1065,7 @@ app.use((err, req, res, next) => {
         return res.status(400).json({ success: false, error: err.message });
     }
     console.error('Unhandled Error:', err);
-    res.status(500).json({ success: false, error: '서버 내부 오류가 발생했습니다.' });
+    return res.status(500).json({ success: false, error: '서버 내부 오류가 발생했습니다.' });
 });
 
 // Cron: 매일 9시, 17시 미완료 사유서 요약 텔레그램 발송

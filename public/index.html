@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>사유서</title>
     <script>window.tailwind = { config: { } };</script>
+    <script>/* suppress Tailwind Play CDN production warning */
+    const _tw = console.warn; console.warn = (...a) => { if (typeof a[0]==='string' && a[0].includes('cdn.tailwindcss.com')) return; _tw.apply(console, a); };</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js" integrity="sha384-YB/DdIkloKoRpclWB8bNcYXWakt57USgtQPDzvnIDHYU0lasD5eWlXVo1S4ODukY" crossorigin="anonymous"></script>
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
@@ -17,166 +19,147 @@
 <body class="bg-gray-50 min-h-screen">
 
     <nav class="bg-white shadow-sm border-b sticky top-0 z-50">
-        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
-            <a href="/public/index.html" class="text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors no-underline">사유서 제작</a>
-            <div class="flex items-center gap-4">
-                <span id="liveClock" class="text-sm font-bold text-gray-400 tabular-nums tracking-tight"></span>
-                <button onclick="showStatusCheck()" class="text-sm font-black text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-all shadow-sm active:scale-[0.97]">진행 상태 조회</button>
+        <div class="max-w-4xl mx-auto px-4 py-3 sm:py-4 flex justify-between items-center gap-3">
+            <a href="/public/index.html" class="text-lg sm:text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors no-underline whitespace-nowrap">반환 청구 사유서 Form</a>
+            <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+                <span id="liveClock" class="text-sm font-bold text-gray-400 tabular-nums tracking-tight hidden sm:inline"></span>
+                <button onclick="showStatusCheck()" class="text-xs sm:text-sm font-black text-white bg-blue-600 hover:bg-blue-700 px-3 sm:px-4 py-2 rounded-lg transition-all shadow-sm active:scale-[0.97] whitespace-nowrap">진행 상태 조회</button>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-3xl mx-auto px-4 py-6 sm:py-10">
+    <main class="max-w-6xl mx-auto px-4 py-6 sm:py-10">
 
         <div id="submitSection" class="bg-white rounded-lg shadow-sm p-5 sm:p-8 border border-gray-200">
-            <div class="mb-4 sm:mb-6 bg-amber-50 border border-amber-200 rounded-lg px-5 py-4">
-                <p class="text-amber-800 font-bold text-sm">본 사유서는 은행에 제출될 공식 자료입니다. 정확하게 작성해 주세요.</p>
-            </div>
-            <div class="mb-6 sm:mb-10">
-                <h2 class="text-3xl font-black text-gray-800 tracking-tight">반환 청구 사유서</h2>
-                <p class="text-gray-400 mt-1 text-base font-medium">모든 항목을 공백 없이 정확히 기입해 주세요.</p>
-            </div>
 
-            <form id="requestForm" class="space-y-10">
-                <!-- 1. 신청인 정보 -->
-                <div>
-                    <h3 class="text-sm font-black text-blue-600 mb-4 tracking-widest flex items-center gap-2">
-                        <span class="w-1 h-4 bg-blue-600 rounded-full"></span> 01. 신청인 정보
-                    </h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">신청인 이름</label>
-                            <input type="text" name="applicant_name" maxlength="20" placeholder="예: 홍길동 (최대 20자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-bold text-base">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">신청인 연락처</label>
-                            <input type="tel" name="applicant_phone" id="input_phone" maxlength="13" placeholder="숫자만" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-bold text-base">
-                        </div>
-                    </div>
+            <form id="requestForm">
+                <!-- 경고배너 (full width, 그리드 밖) -->
+                <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-6 text-center">
+                    <p class="text-amber-800 font-bold text-sm">본 사유서는 은행에 제출될 공식 자료입니다. 정확하게 작성해 주세요.</p>
                 </div>
 
-                <!-- 2. 입금 및 청구 상세 -->
-                <div>
-                    <h3 class="text-sm font-black text-blue-600 mb-4 tracking-widest flex items-center gap-2">
-                        <span class="w-1 h-4 bg-blue-600 rounded-full"></span> 02. 상세
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-x-8">
+
+                    <!-- Row 0: Section headers -->
+                    <h3 class="text-lg font-black text-blue-600 mb-0 tracking-widest flex items-center gap-2 md:col-span-2 lg:order-none order-1">
+                        <span class="w-1 h-4 bg-blue-600 rounded-full"></span> 업체·신청인 정보
                     </h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">신청일자</label>
-                            <input type="date" name="request_date" id="date_request" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                    <h3 class="text-lg font-black text-blue-600 mb-0 tracking-widest flex items-center gap-2 md:col-span-2 lg:order-none order-[9]">
+                        <span class="w-1 h-4 bg-blue-600 rounded-full"></span> 입금 정보
+                    </h3>
+
+                    <!-- Row 1: 지사코드 / 가맹점코드 / 입금일자 / 입금액 -->
+                    <div class="lg:order-none order-2">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">지사코드 (구분코드1)</label>
+                        <input type="text" name="contractor_type" maxlength="30" placeholder="한글, 영어, 숫자 (최대 30자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                    </div>
+                    <div class="lg:order-none order-3">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">가맹점코드 (구분코드2)</label>
+                        <input type="text" name="merchant_type" maxlength="30" placeholder="한글, 영어, 숫자 (최대 30자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                    </div>
+                    <div class="lg:order-none order-[10]">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">입금 보낸 일자</label>
+                        <input type="date" name="deposit_date" id="date_deposit" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                    </div>
+                    <div class="lg:order-none order-[11]">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">입금액 (원)</label>
+                        <input type="text" name="deposit_amount" id="input_amount" placeholder="숫자만 입력" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-black text-base text-blue-600">
+                    </div>
+
+                    <!-- Row 2: 신청인이름 / 전화번호 / 상세사유 (row-span-2) -->
+                    <div class="lg:order-none order-4">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">신청인 이름</label>
+                        <input type="text" name="applicant_name" maxlength="20" placeholder="예: 홍길동 (최대 20자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-bold text-base">
+                    </div>
+                    <div class="lg:order-none order-5">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">신청인 전화번호</label>
+                        <input type="tel" name="applicant_phone" id="input_phone" maxlength="13" placeholder="숫자만" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-bold text-base">
+                    </div>
+                    <div class="md:col-span-2 lg:row-span-2 lg:order-none order-[12] flex flex-col">
+                        <div class="flex justify-between items-baseline mb-1.5">
+                            <label class="block text-sm font-bold text-gray-500">상세 청구 사유 (최대 200자)</label>
+                            <span id="char-count" class="text-xs font-bold text-gray-400 tracking-tighter">0 / 200</span>
                         </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">실제 입금일자</label>
-                            <input type="date" name="deposit_date" id="date_deposit" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                        <textarea id="input_details" name="details" maxlength="200" rows="3" class="w-full flex-1 border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all resize-none font-medium text-gray-600 text-base" placeholder="오입금 상황을 상세히 적어주세요."></textarea>
+                    </div>
+
+                    <!-- Row 3: 은행명 / 계좌번호 / (상세사유 continues via row-span) -->
+                    <div class="lg:order-none order-6">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">은행명</label>
+                        <input type="text" name="bank_name" maxlength="20" placeholder="예: 신한은행" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                    </div>
+                    <div class="lg:order-none order-7">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">출금 나간 계좌번호</label>
+                        <input type="text" name="refund_account" id="input_account" maxlength="16" placeholder="- 없이 숫자만 입력 (최대 16자)" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-black text-base tracking-tighter">
+                    </div>
+
+                    <!-- Row 4: 신분증 업로드 / 입출금거래내역서 업로드 -->
+                    <div class="md:col-span-2 lg:order-none order-8">
+                        <h4 class="text-sm font-black text-green-600 mb-3 tracking-widest flex items-center gap-2">
+                            <span class="w-1 h-3 bg-green-600 rounded-full"></span> 신청인 신분증
+                        </h4>
+
+                        <input id="id-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf">
+
+                        <div id="id-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-8 border-2 border-gray-200 border-dashed rounded-lg hover:bg-green-50 hover:border-green-400 transition-all cursor-pointer group">
+                            <svg class="h-10 w-10 text-gray-300 group-hover:text-green-500 transition-colors mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                            <p class="text-gray-700 font-bold text-sm">신분증 파일을 이 곳에 끌어다 놓으세요</p>
+                            <p class="text-xs text-gray-400 mt-1">1개, 10MB, PNG/JPG/PDF</p>
                         </div>
-                        <div class="md:col-span-2">
-                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">입금액 (원)</label>
-                            <input type="text" name="deposit_amount" id="input_amount" placeholder="숫자만 입력" required class="w-full border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-black text-2xl text-blue-600">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">계약자 (구분코드1)</label>
-                            <input type="text" name="contractor_type" maxlength="30" placeholder="한글, 영어, 숫자 (최대 30자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">가맹점 (구분코드2)</label>
-                            <input type="text" name="merchant_type" maxlength="30" placeholder="한글, 영어, 숫자 (최대 30자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
-                        </div>
-                        <div class="md:col-span-2">
-                            <div class="flex justify-between items-end mb-1.5 ml-1">
-                                <label class="block text-sm font-bold text-gray-500">상세 청구 사유 (최대 200자)</label>
-                                <span id="char-count" class="text-xs font-bold text-gray-400 tracking-tighter">0 / 200</span>
+
+                        <div id="idFilePreview" class="hidden mt-3">
+                            <div class="flex flex-col gap-3 p-4 bg-green-50 border border-green-100 rounded-lg">
+                                <div class="flex items-center justify-between">
+                                    <p class="text-xs font-black text-green-500 tracking-widest">신청인 신분증 (<span id="idFileCount">0</span>/1)</p>
+                                    <button type="button" onclick="clearAllIdFiles()" class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors">삭제</button>
+                                </div>
+                                <div id="idFileList" class="space-y-2"></div>
+                                <button type="button" onclick="document.getElementById('id-file-upload').click()" class="text-xs font-bold text-green-600 hover:text-green-700 transition-colors mt-1" id="idAddMoreBtn">+ 파일 추가</button>
                             </div>
-                            <textarea id="input_details" name="details" maxlength="200" rows="3" class="w-full border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all resize-none font-medium text-gray-600 text-base" placeholder="오입금 상황을 상세히 적어주세요."></textarea>
                         </div>
                     </div>
-                </div>
 
-                <!-- 3. 반환 계좌 정보 -->
-                <div>
-                    <h3 class="text-sm font-black text-blue-600 mb-4 tracking-widest flex items-center gap-2">
-                        <span class="w-1 h-4 bg-blue-600 rounded-full"></span> 03. 사용 계좌
-                    </h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">은행명</label>
-                            <input type="text" name="bank_name" maxlength="20" placeholder="예: 신한은행" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                    <div class="md:col-span-2 lg:order-none order-[13]">
+                        <h4 class="text-sm font-black text-blue-500 mb-3 tracking-widest flex items-center gap-2">
+                            <span class="w-1 h-3 bg-blue-500 rounded-full"></span> 입출금거래내역서
+                        </h4>
+
+                        <input id="deposit-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple>
+
+                        <div id="deposit-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-8 border-2 border-gray-200 border-dashed rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-all cursor-pointer group">
+                            <svg class="h-10 w-10 text-gray-300 group-hover:text-blue-500 transition-colors mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                            <p class="text-gray-700 font-bold text-sm">입출금거래내역서 파일을 이 곳에 끌어다 놓으세요</p>
+                            <p class="text-xs text-gray-400 mt-1">최대 5개, 10MB/개, PNG/JPG/PDF</p>
                         </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">계좌명 (예금주)</label>
-                            <input type="text" name="refund_account_name" maxlength="20" placeholder="실명 (최대 20자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
-                        </div>
-                        <div class="md:col-span-2">
-                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">사용 계좌번호</label>
-                            <input type="text" name="refund_account" id="input_account" maxlength="16" placeholder="- 없이 숫자만 입력 (최대 16자)" required class="w-full border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-black text-xl tracking-tighter">
-                        </div>
-                    </div>
-                </div>
 
-                <!-- 4. 입금내역서 첨부 -->
-                <div>
-                    <h3 class="text-sm font-black text-blue-600 mb-4 tracking-widest flex items-center gap-2">
-                        <span class="w-1 h-4 bg-blue-600 rounded-full"></span> 04. 입금내역서 첨부
-                    </h3>
-
-                    <input id="deposit-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple>
-
-                    <div id="deposit-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-12 border-2 border-gray-200 border-dashed rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-all cursor-pointer group">
-                        <svg class="h-14 w-14 text-gray-300 group-hover:text-blue-500 transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-                        <p class="text-gray-700 font-bold text-base">입금내역서 파일을 이 곳에 끌어다 놓으세요</p>
-                        <p class="text-sm text-gray-400 mt-2">최대 5개, 10MB/개, PNG/JPG/PDF</p>
-                    </div>
-
-                    <div id="depositFilePreview" class="hidden mt-4">
-                        <div class="flex flex-col gap-3 p-5 bg-blue-50 border border-blue-100 rounded-lg">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs font-black text-blue-400 tracking-widest">입금내역서 (<span id="depositFileCount">0</span>/5)</p>
-                                <button type="button" onclick="clearAllDepositFiles()" class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors">전체 삭제</button>
+                        <div id="depositFilePreview" class="hidden mt-3">
+                            <div class="flex flex-col gap-3 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                                <div class="flex items-center justify-between">
+                                    <p class="text-xs font-black text-blue-400 tracking-widest">입출금거래내역서 (<span id="depositFileCount">0</span>/5)</p>
+                                    <button type="button" onclick="clearAllDepositFiles()" class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors">전체 삭제</button>
+                                </div>
+                                <div id="depositFileList" class="space-y-2"></div>
+                                <button type="button" onclick="document.getElementById('deposit-file-upload').click()" class="text-xs font-bold text-blue-500 hover:text-blue-700 transition-colors mt-1" id="depositAddMoreBtn">+ 파일 추가</button>
                             </div>
-                            <div id="depositFileList" class="space-y-2"></div>
-                            <button type="button" onclick="document.getElementById('deposit-file-upload').click()" class="text-xs font-bold text-blue-500 hover:text-blue-700 transition-colors mt-1" id="depositAddMoreBtn">+ 파일 추가</button>
                         </div>
                     </div>
+
                 </div>
 
-                <!-- 5. 신분증 첨부 -->
-                <div>
-                    <h3 class="text-sm font-black text-blue-600 mb-4 tracking-widest flex items-center gap-2">
-                        <span class="w-1 h-4 bg-blue-600 rounded-full"></span> 05. 신분증 첨부
-                    </h3>
-
-                    <input id="id-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple>
-
-                    <div id="id-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-12 border-2 border-gray-200 border-dashed rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-all cursor-pointer group">
-                        <svg class="h-14 w-14 text-gray-300 group-hover:text-blue-500 transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-                        <p class="text-gray-700 font-bold text-base">신분증 파일을 이 곳에 끌어다 놓으세요</p>
-                        <p class="text-sm text-gray-400 mt-2">최대 5개, 10MB/개, PNG/JPG/PDF</p>
-                    </div>
-
-                    <div id="idFilePreview" class="hidden mt-4">
-                        <div class="flex flex-col gap-3 p-5 bg-green-50 border border-green-100 rounded-lg">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs font-black text-green-500 tracking-widest">신분증 (<span id="idFileCount">0</span>/5)</p>
-                                <button type="button" onclick="clearAllIdFiles()" class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors">전체 삭제</button>
-                            </div>
-                            <div id="idFileList" class="space-y-2"></div>
-                            <button type="button" onclick="document.getElementById('id-file-upload').click()" class="text-xs font-bold text-green-600 hover:text-green-700 transition-colors mt-1" id="idAddMoreBtn">+ 파일 추가</button>
+                <!-- 약관 동의 + 제출 버튼 (full width, 그리드 밖) -->
+                <div class="mt-8 space-y-5">
+                    <div class="flex items-center justify-center bg-gray-50 px-4 py-3.5 rounded-lg border border-gray-200">
+                        <input id="terms" name="terms" type="checkbox" required class="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer flex-shrink-0">
+                        <div class="ml-3 text-sm sm:text-base font-bold text-gray-700 cursor-pointer underline decoration-blue-200 underline-offset-4" onclick="document.getElementById('terms').click()">
+                            개인정보 수집 및 이용 동의 (필수)
+                            <button type="button" onclick="event.stopPropagation(); openTermsModal()" class="text-xs font-black bg-blue-600 text-white px-2.5 py-0.5 rounded ml-2 shadow-sm tracking-tighter">보기</button>
                         </div>
                     </div>
-                </div>
 
-                <div class="flex items-start bg-gray-50 p-5 rounded-lg border border-gray-200">
-                    <div class="flex items-center h-5">
-                        <input id="terms" name="terms" type="checkbox" required class="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer">
-                    </div>
-                    <div class="ml-3 text-base flex-1 font-bold text-gray-700 cursor-pointer underline decoration-blue-200 underline-offset-4" onclick="document.getElementById('terms').click()">
-                        개인정보 수집 및 이용 동의 (필수)
-                        <button type="button" onclick="event.stopPropagation(); openTermsModal()" class="text-xs font-black bg-blue-600 text-white px-2.5 py-0.5 rounded ml-2 shadow-sm tracking-tighter">보기</button>
-                    </div>
+                    <button type="submit" class="w-full bg-blue-600 text-white font-black py-3.5 rounded-lg hover:bg-blue-700 transition-all shadow-sm active:scale-[0.98] text-lg">
+                        사유서 제출하기
+                    </button>
                 </div>
-
-                <button type="submit" class="w-full bg-blue-600 text-white font-black py-4 rounded-lg hover:bg-blue-700 transition-all shadow-sm active:scale-[0.98] text-xl">
-                    사유서 제출하기
-                </button>
             </form>
         </div>
 
@@ -256,7 +239,7 @@
 
         let isSubmitting = false;
 
-        // ── 입금내역서 파일 관리 ──
+        // ── 입출금거래내역서 파일 관리 ──
         const depositDropZone = document.getElementById('deposit-drop-zone');
         const depositFileInput = document.getElementById('deposit-file-upload');
         const depositFilePreview = document.getElementById('depositFilePreview');
@@ -333,7 +316,8 @@
             fileInput.value = '';
         }
 
-        function renderFileListGeneric(filesArray, dropZone, filePreview, fileListEl, fileCountEl, addMoreBtnId, removeFn, borderColor) {
+        function renderFileListGeneric(filesArray, dropZone, filePreview, fileListEl, fileCountEl, addMoreBtnId, removeFn, borderColor, maxCount) {
+            maxCount = maxCount || 5;
             if (filesArray.length === 0) {
                 dropZone.classList.remove('hidden');
                 filePreview.classList.add('hidden');
@@ -342,7 +326,7 @@
             dropZone.classList.add('hidden');
             filePreview.classList.remove('hidden');
             fileCountEl.textContent = filesArray.length;
-            document.getElementById(addMoreBtnId).style.display = filesArray.length >= 5 ? 'none' : '';
+            document.getElementById(addMoreBtnId).style.display = filesArray.length >= maxCount ? 'none' : '';
 
             fileListEl.innerHTML = filesArray.map((file, idx) => {
                 const isPdf = /\.pdf$/i.test(file.name);
@@ -373,9 +357,9 @@
             });
         }
 
-        // ── 입금내역서 ──
+        // ── 입출금거래내역서 ──
         setupDropZone(depositDropZone, depositFileInput, selectedDepositFiles, 5, (files) => {
-            handleFilesGeneric(files, selectedDepositFiles, depositFileInput, 5, '입금내역서');
+            handleFilesGeneric(files, selectedDepositFiles, depositFileInput, 5, '입출금거래내역서');
             renderDepositFileList();
         });
         function renderDepositFileList() {
@@ -384,22 +368,20 @@
         function removeDepositFile(idx) { selectedDepositFiles.splice(idx, 1); renderDepositFileList(); }
         function clearAllDepositFiles() { selectedDepositFiles = []; depositFileInput.value = ''; renderDepositFileList(); }
 
-        // ── 신분증 ──
-        setupDropZone(idDropZone, idFileInput, selectedIdFiles, 5, (files) => {
-            handleFilesGeneric(files, selectedIdFiles, idFileInput, 5, '신분증');
+        // ── 신분증 (1개만) ──
+        setupDropZone(idDropZone, idFileInput, selectedIdFiles, 1, (files) => {
+            handleFilesGeneric(files, selectedIdFiles, idFileInput, 1, '신분증');
             renderIdFileList();
         });
         function renderIdFileList() {
-            renderFileListGeneric(selectedIdFiles, idDropZone, idFilePreview, idFileListEl, idFileCountEl, 'idAddMoreBtn', 'removeIdFile', 'border-green-100');
+            renderFileListGeneric(selectedIdFiles, idDropZone, idFilePreview, idFileListEl, idFileCountEl, 'idAddMoreBtn', 'removeIdFile', 'border-green-100', 1);
         }
         function removeIdFile(idx) { selectedIdFiles.splice(idx, 1); renderIdFileList(); }
         function clearAllIdFiles() { selectedIdFiles = []; idFileInput.value = ''; renderIdFileList(); }
 
         const kstOpts = { timeZone: 'Asia/Seoul' };
         const todayKST = new Date().toLocaleDateString('sv-SE', kstOpts);
-        document.getElementById('date_request').max = todayKST;
         document.getElementById('date_deposit').max = todayKST;
-        document.getElementById('date_request').value = todayKST;
         document.getElementById('date_deposit').value = todayKST;
 
         const clockEl = document.getElementById('liveClock');
@@ -475,10 +457,9 @@
             if (!formData.get('applicant_name').trim()) errors.push('이름 필수');
             if (formData.get('applicant_phone').replace(/\D/g, '').length < 10) errors.push('연락처 확인');
             if (!formData.get('deposit_amount')) errors.push('금액 필수');
-            if (selectedDepositFiles.length === 0) errors.push('입금내역서 파일 필수');
+            if (selectedDepositFiles.length === 0) errors.push('입출금거래내역서 파일 필수');
             if (selectedIdFiles.length === 0) errors.push('신분증 파일 필수');
             if (!formData.get('terms')) errors.push('약관 동의 필수');
-            if (formData.get('deposit_date') > formData.get('request_date')) errors.push('입금일자는 신청일자와 같거나 이전이어야 합니다');
 
             if (errors.length > 0) {
                 Swal.fire({ icon:'warning', title:'입력 누락', html: errors.join('<br>') });
@@ -530,15 +511,12 @@
                 '',
                 '═══════════════════════════════════════',
             ].join('\r\n');
-            const blob = new Blob(['\uFEFF' + content], { type: 'text/plain;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url;
+            a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent('\uFEFF' + content);
             a.download = `사유서_식별코드_${requestCode}.txt`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            URL.revokeObjectURL(url);
         }
 
         function showStatusCheck() { document.getElementById('submitSection').classList.add('hidden'); document.getElementById('statusSection').classList.remove('hidden'); window.scrollTo(0,0); }

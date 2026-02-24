@@ -20,7 +20,7 @@ BEGIN
 
     -- 기본 관리자 (배포 후 반드시 비밀번호 변경 필요)
     INSERT INTO Users (username, password_hash, name)
-    VALUES ('admin', '$2b$10$8iAuwIa1S4azwk1nrsu1P.RBnIT0Ed0rqgVmShnkYBr.FP9zdWQAy', N'시스템관리자');
+    VALUES ('admin', '$2b$10$xDBRfVtem.kCLSaka8u3EOrkimVliUbtWTUhDORb7yjIgHsIK604i', N'시스템관리자');
 END
 
 -- ============================================================
@@ -66,7 +66,7 @@ BEGIN
         filename        NVARCHAR(50) NOT NULL,      -- UUID.확장자
         original_name   NVARCHAR(255) NOT NULL,     -- 원본 파일명
         file_type       NVARCHAR(10) NOT NULL,      -- jpg, png, pdf
-        category        NVARCHAR(20) NOT NULL DEFAULT N'신분증',  -- 입금내역서 / 신분증
+        category        NVARCHAR(20) NOT NULL DEFAULT N'신분증',  -- 입출금거래내역서 / 신분증
         uploaded_at     DATETIME DEFAULT GETDATE(),
         CONSTRAINT FK_RequestFiles_Requests
             FOREIGN KEY (request_id) REFERENCES Requests(id) ON DELETE CASCADE
@@ -112,7 +112,7 @@ IF COL_LENGTH('Requests', 'terms_ip') IS NULL
 IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='Requests' AND COLUMN_NAME='applicant_name' AND CHARACTER_MAXIMUM_LENGTH < 20)
     ALTER TABLE Requests ALTER COLUMN applicant_name NVARCHAR(20) NOT NULL;
 
--- 4-3. RequestFiles category 컬럼 추가 (입금내역서 / 신분증 분리)
+-- 4-3. RequestFiles category 컬럼 추가 (입출금거래내역서 / 신분증 분리)
 IF COL_LENGTH('RequestFiles', 'category') IS NULL
     ALTER TABLE RequestFiles ADD category NVARCHAR(20) NOT NULL DEFAULT N'신분증';
 
@@ -263,7 +263,7 @@ EXEC sp_addextendedproperty N'MS_Description', N'세션 만료 일시 (maxAge: 8
 
 -- ─── RequestFiles 테이블 ───
 BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles'; END TRY BEGIN CATCH END CATCH;
-EXEC sp_addextendedproperty N'MS_Description', N'사유서 첨부파일 관리. 카테고리별(입금내역서/신분증) 최대 5개 파일(JPG, PNG, PDF) 연결.', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles';
+EXEC sp_addextendedproperty N'MS_Description', N'사유서 첨부파일 관리. 카테고리별(입출금거래내역서/신분증) 최대 5개 파일(JPG, PNG, PDF) 연결.', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles';
 
 BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'id'; END TRY BEGIN CATCH END CATCH;
 EXEC sp_addextendedproperty N'MS_Description', N'자동 증가 기본키', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'id';
@@ -281,7 +281,7 @@ BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TA
 EXEC sp_addextendedproperty N'MS_Description', N'파일 확장자 (jpg, png, pdf)', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'file_type';
 
 BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'category'; END TRY BEGIN CATCH END CATCH;
-EXEC sp_addextendedproperty N'MS_Description', N'파일 카테고리 (입금내역서 또는 신분증)', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'category';
+EXEC sp_addextendedproperty N'MS_Description', N'파일 카테고리 (입출금거래내역서 또는 신분증)', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'category';
 
 BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'uploaded_at'; END TRY BEGIN CATCH END CATCH;
 EXEC sp_addextendedproperty N'MS_Description', N'업로드 일시', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'uploaded_at';

@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>사유서 제작 - 관리</title>
     <script>window.tailwind = { config: { } };</script>
+    <script>/* suppress Tailwind Play CDN production warning */
+    const _tw = console.warn; console.warn = (...a) => { if (typeof a[0]==='string' && a[0].includes('cdn.tailwindcss.com')) return; _tw.apply(console, a); };</script>
     <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha384-1H217gwSVyLSIfaLxHbE7dRb3v4mYCKbpQvzx0cegeju1MVsGrX5xXxAvs/HgeFs" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css" integrity="sha384-cya1SKeBBe5YTpHgx4WoICmzqkoHTxoGqjPySUq2nLksbJ/JiKXX2RmhyLz6jwST" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.datatables.net/select/1.7.0/css/select.dataTables.min.css" integrity="sha384-P82uzAoBEm1hxQbD1Ox+ohCxw4LCZc2mJVl5VS9raZC2+1ZRzuHGQ2px0Lox8HO8" crossorigin="anonymous">
@@ -40,6 +42,9 @@
             white-space: nowrap !important;
             text-align: center !important;
         }
+        /* thead 좌우 끝 둥근 모서리 */
+        table.dataTable thead th:first-child { border-radius: 8px 0 0 0 !important; }
+        table.dataTable thead th:last-child  { border-radius: 0 8px 0 0 !important; }
         table.dataTable tbody td {
             padding: 14px 16px !important;
             border-bottom: 1px solid #F5F5F5 !important;
@@ -48,6 +53,19 @@
             color: #404040 !important;
             vertical-align: middle !important;
             white-space: nowrap !important;
+        }
+
+        /* 정렬 가능 열: 화살표와 텍스트 겹침 방지 */
+        table.dataTable thead th.sorting,
+        table.dataTable thead th.sorting_asc,
+        table.dataTable thead th.sorting_desc {
+            padding-right: 28px !important;
+            background-position: right 8px center !important;
+        }
+        /* 정렬 불가 열: 화살표 제거 */
+        table.dataTable thead th.sorting_disabled {
+            background-image: none !important;
+            cursor: default !important;
         }
 
         /* 전체 가운데 정렬 */
@@ -61,49 +79,104 @@
             box-shadow: none !important;
         }
 
-        /* 체크박스 */
+        /* 체크박스 열 폭 최소화 */
+        table.dataTable thead th:first-child,
+        table.dataTable tbody td:first-child {
+            width: 36px !important;
+            min-width: 36px !important;
+            max-width: 36px !important;
+            padding: 0 !important;
+            text-align: center !important;
+        }
+        /* 헤더 전체선택 체크박스 */
+        #selectAll {
+            width: 15px !important;
+            height: 15px !important;
+            accent-color: #525252;
+            vertical-align: middle;
+        }
+        /* 본문 행 체크박스 (pseudo-element) */
+        table.dataTable tbody td.select-checkbox { position: relative !important; }
         table.dataTable tbody td.select-checkbox:before {
+            content: '' !important;
+            display: block !important;
+            position: absolute !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            margin: 0 !important;
+            width: 15px !important;
+            height: 15px !important;
             border: 1.5px solid #D4D4D4 !important;
             border-radius: 3px !important;
-            top: 50% !important;
-            margin-top: -7px !important;
+            background: #fff !important;
+            box-sizing: border-box !important;
+        }
+        table.dataTable tr.selected td.select-checkbox:before {
+            background: #525252 !important;
+            border-color: #525252 !important;
         }
         table.dataTable tr.selected td.select-checkbox:after {
             content: '✓' !important;
-            text-shadow: none !important;
+            display: block !important;
+            position: absolute !important;
             top: 50% !important;
-            margin-top: -11px !important;
-            margin-left: -5px !important;
-            color: #1A1A1A !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            margin: 0 !important;
+            text-shadow: none !important;
+            color: #fff !important;
             font-weight: 700 !important;
-            font-size: 12px !important;
+            font-size: 11px !important;
+            line-height: 1 !important;
+        }
+
+        /* 공통 select — 기본 화살표 제거 + 커스텀 화살표 */
+        select {
+            appearance: none !important;
+            -webkit-appearance: none !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23737373' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+            background-repeat: no-repeat !important;
+            background-position: right 10px center !important;
+            padding-right: 28px !important;
         }
 
         /* 상태 드롭다운 — 콤팩트 */
         .list-status-select {
-            background: #fff;
+            background-color: #fff;
             border: 1px solid #E5E5E5;
             border-radius: 4px;
-            padding: 4px 10px;
+            padding: 4px 28px 4px 10px !important;
             font-size: 14px;
             font-weight: 700;
             outline: none;
             cursor: pointer;
         }
         .list-status-select:focus { border-color: #A3A3A3; }
+        .list-status-select option { color: #1A1A1A; background: #fff; }
+
+        /* 상태 텍스트 (완료 등 고정 상태) */
+        .list-status-text {
+            padding: 4px 10px;
+            font-size: 14px;
+            font-weight: 700;
+            display: inline-block;
+            border: 1px solid transparent; /* 높이 유지를 위해 */
+        }
 
         /* 상태 컬러 */
-        .status-대기 { color: #A3A3A3; }
-        .status-접수 { color: #1A1A1A; }
-        .status-처리중 { color: #B45309; }
-        .status-완료 { color: #15803D; }
-        .status-반려 { color: #B91C1C; }
+        .status-대기 { color: #E11D48; }    /* Rose 600 - 가장 눈에 띔 */
+        .status-접수 { color: #2563EB; }    /* Blue 600 */
+        .status-처리중 { color: #7C3AED; }  /* Violet 600 */
+        .status-반려 { color: #D97706; }    /* Amber 600 */
+        .status-완료 { color: #D4D4D4; }    /* Neutral 300 - 가장 안 띔 */
 
         /* 필터 활성 상태 */
         .filter-active {
-            background: #1A1A1A !important;
+            background-color: #1A1A1A !important;
             color: #fff !important;
             border-color: #1A1A1A !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23ffffff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
         }
 
         /* DataTables — 기본 검색/건수 숨김 (커스텀 툴바 사용) */
@@ -166,7 +239,10 @@
                 min-height: auto !important;
             }
             #detailModal .modal-close-btn,
-            #detailModal .modal-footer { display: none !important; }
+            #detailModal .modal-footer,
+            .no-print { display: none !important; }
+            #detailModal .px-5.py-5.sm\:px-10.sm\:py-8 { padding: 0 !important; }
+            #detailModal h2 { margin-top: 0 !important; }
         }
     </style>
 </head>
@@ -251,7 +327,7 @@
                 <table id="requestTable" class="w-full">
                     <thead>
                         <tr>
-                            <th class="w-8"><input type="checkbox" id="selectAll" class="cursor-pointer" style="width:16px;height:16px;"></th>
+                            <th><input type="checkbox" id="selectAll" class="cursor-pointer"></th>
                             <th>신청일</th>
                             <th>식별코드</th>
                             <th>계약자 코드</th>
@@ -291,6 +367,7 @@
                     <button id="btnSaveEdit" onclick="saveEdit()" class="hidden bg-blue-600 text-white px-4 sm:px-6 py-2 rounded-md font-bold text-sm hover:bg-blue-700 transition-colors">저장</button>
                     <button id="btnSaveCreate" onclick="saveCreate()" class="hidden bg-[#1A1A1A] text-white px-4 sm:px-6 py-2 rounded-md font-bold text-sm hover:bg-[#333] transition-colors">등록</button>
                     <button id="btnCancelEdit" onclick="cancelEditMode()" class="hidden border border-[#E5E5E5] text-[#525252] px-4 sm:px-6 py-2 rounded-md font-bold text-sm hover:bg-[#F5F5F5] transition-colors">취소</button>
+                    <button id="btnDownloadWord" onclick="downloadWord()" class="bg-blue-600 text-white px-4 sm:px-6 py-2 rounded-md font-bold text-sm hover:bg-blue-700 transition-colors">Word 다운로드</button>
                     <button id="btnPrint" onclick="printPage()" class="bg-[#1A1A1A] text-white px-4 sm:px-6 py-2 rounded-md font-bold text-sm hover:bg-[#333] transition-colors">인쇄</button>
                 </div>
             </div>
@@ -298,7 +375,7 @@
     </div>
 
     <script>
-        let table; let allData = []; let currentDetailId = null; let isEditMode = false; let modalMode = 'view'; // 'view' | 'edit' | 'create'
+        let table; let allData = []; let dataById = new Map(); let currentDetailId = null; let isEditMode = false; let modalMode = 'view'; // 'view' | 'edit' | 'create'
         let isSaving = false;
         const statuses = ['대기', '접수', '처리중', '완료', '반려'];
 
@@ -373,7 +450,7 @@
                 pageLength: 25,
                 columnDefs: [
                     { orderable: false, className: 'select-checkbox', targets: 0 },
-                    { orderable: false, targets: [10, 11] },
+                    { orderable: false, targets: [3, 4, 5, 6, 9, 10, 11] },
                     { className: 'dt-center', targets: '_all' }
                 ],
                 select: { style: 'multi', selector: 'td:first-child' },
@@ -412,7 +489,7 @@
             let searchTimer = null;
             $('#customSearch').on('input', function() {
                 clearTimeout(searchTimer);
-                searchTimer = setTimeout(() => { table.draw(); updateFilterCount(); }, 200);
+                searchTimer = setTimeout(() => { syncFilterCache(); table.draw(); updateFilterCount(); }, 200);
             });
 
             // 커스텀 건수
@@ -448,6 +525,7 @@
                 const prevSearch = $('#customSearch').val() || '';
 
                 allData = res.data; table.clear();
+                dataById = new Map(allData.map(d => [d.id, d]));
                 const merchants = new Set();
                 const contractors = new Set();
 
@@ -455,8 +533,13 @@
                     if (i.merchant_code) merchants.add(i.merchant_code);
                     if (i.contractor_code) contractors.add(i.contractor_code);
 
-                    let statusOptions = statuses.map(s => `<option value="${s}" ${i.status === s ? 'selected' : ''}>${s}</option>`).join('');
-                    const statusDd = `<select onchange="updateStatusDirect(${i.id}, this)" class="list-status-select status-${i.status}">${statusOptions}</select>`;
+                    let statusDd = '';
+                    if (i.status === '완료') {
+                        statusDd = `<span class="list-status-text status-완료">완료</span>`;
+                    } else {
+                        let statusOptions = statuses.map(s => `<option value="${s}" ${i.status === s ? 'selected' : ''}>${s}</option>`).join('');
+                        statusDd = `<select onchange="updateStatusDirect(${i.id}, this)" class="list-status-select status-${i.status}">${statusOptions}</select>`;
+                    }
 
                     const accountInfo = [i.bank_name, i.user_account, i.user_account_name].filter(Boolean).map(esc).join(' ');
 
@@ -488,6 +571,7 @@
                 if (prevStatus) { $('#filter_status').val(prevStatus).toggleClass('filter-active', true); }
                 if (prevSearch) { $('#customSearch').val(prevSearch); }
 
+                syncFilterCache();
                 table.draw();
                 updateFilterCount();
             }
@@ -495,7 +579,7 @@
 
         async function updateStatusDirect(id, sel) {
             const newStatus = sel.value;
-            const prevStatus = allData.find(d => d.id === id)?.status || sel.dataset.prev || '대기';
+            const prevStatus = dataById.get(id)?.status || sel.dataset.prev || '대기';
             try {
                 const { ok, data: json } = await safeFetch('/api/admin/status', {
                     method: 'PUT',
@@ -503,15 +587,8 @@
                     body: JSON.stringify({ id, status: newStatus })
                 });
                 if (ok && json.success) {
-                    // allData 동기화
-                    const item = allData.find(d => d.id === id);
-                    if (item) item.status = newStatus;
-                    sel.className = `list-status-select status-${newStatus}`;
-                    sel.dataset.prev = newStatus;
-                    // 필터가 활성화된 경우 테이블 다시 그리기
-                    table.draw();
-                    updateFilterCount();
                     Swal.fire({ icon: 'success', title: newStatus, timer: 600, showConfirmButton: false, position: 'top-end', toast: true });
+                    await loadData(); // '완료' 시 드롭다운 -> 텍스트 전환 등을 위해 전체 다시 불러오기
                 } else {
                     // 실패 시 이전 상태로 롤백
                     sel.value = prevStatus;
@@ -526,30 +603,29 @@
         }
 
         // allData 기반 커스텀 필터 (HTML 마크업 제외, 원본 데이터 검색)
+        // 필터 값 캐시 — draw() 전에 한 번만 읽고, 행마다 DOM 접근하지 않음
+        let cachedFC = '', cachedFM = '', cachedFS = '', cachedQ = '';
+
         $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
             const rowData = table.row(dataIndex).data();
             if (!rowData) return true;
 
             // 행의 data-id로 allData에서 원본 찾기
             const id = $(rowData[11]).data('id');
-            const item = allData.find(d => d.id === id);
+            const item = dataById.get(id);
             if (!item) return true;
 
             // 필터: 계약자 코드
-            const fc = $('#filter_contractor').val();
-            if (fc && item.contractor_code !== fc) return false;
+            if (cachedFC && item.contractor_code !== cachedFC) return false;
 
             // 필터: 가맹점 코드
-            const fm = $('#filter_merchant').val();
-            if (fm && item.merchant_code !== fm) return false;
+            if (cachedFM && item.merchant_code !== cachedFM) return false;
 
             // 필터: 상태 (원본 status 필드로 정확 매칭)
-            const fs = $('#filter_status').val();
-            if (fs && item.status !== fs) return false;
+            if (cachedFS && item.status !== cachedFS) return false;
 
             // 텍스트 검색 (원본 데이터 필드만 대상)
-            const q = $('#customSearch').val().trim().toLowerCase();
-            if (q) {
+            if (cachedQ) {
                 const searchFields = [
                     item.request_code,
                     item.applicant_name,
@@ -563,15 +639,24 @@
                     item.details,
                     String(item.deposit_amount)
                 ].map(v => (v || '').toLowerCase());
-                if (!searchFields.some(f => f.includes(q))) return false;
+                if (!searchFields.some(f => f.includes(cachedQ))) return false;
             }
 
             return true;
         });
 
+        // 필터 캐시 갱신 헬퍼 — draw() 호출 전에 실행
+        function syncFilterCache() {
+            cachedFC = $('#filter_contractor').val() || '';
+            cachedFM = $('#filter_merchant').val() || '';
+            cachedFS = $('#filter_status').val() || '';
+            cachedQ  = ($('#customSearch').val() || '').trim().toLowerCase();
+        }
+
         // 필터 변경 시 draw (커스텀 필터가 처리) + 활성 스타일
         $('#filter_contractor, #filter_merchant, #filter_status').on('change', function() {
             $(this).toggleClass('filter-active', !!this.value);
+            syncFilterCache();
             table.draw();
             updateFilterCount();
         });
@@ -590,18 +675,19 @@
         function resetFilters() {
             $('#filter_contractor, #filter_merchant, #filter_status').val('').removeClass('filter-active');
             $('#customSearch').val('');
+            syncFilterCache();
             table.draw();
             updateFilterCount();
         }
 
         // 상세 모달
         async function openDetail(id) {
-            const d = allData.find(d => d.id === id);
+            const d = dataById.get(id);
             if (!d) return;
             currentDetailId = id;
             isEditMode = false;
             modalMode = 'view';
-            $('#btnEdit, #btnDelete, #btnPrint').show();
+            $('#btnEdit, #btnDelete, #btnPrint, #btnDownloadWord').show();
             $('#btnSaveEdit, #btnSaveCreate, #btnCancelEdit').hide();
             $('#detailModal').data('code', d.request_code);
 
@@ -619,8 +705,8 @@
             d._files = files;
 
             // Group files by category
-            const depositFiles = files.filter(f => f.category === '입금내역서');
-            const idCardFiles = files.filter(f => f.category !== '입금내역서'); // 신분증 or legacy (no category)
+            const depositFiles = files.filter(f => f.category === '입출금거래내역서');
+            const idCardFiles = files.filter(f => f.category !== '입출금거래내역서'); // 신분증 or legacy (no category)
 
             function renderFilesSection(fileList, category) {
                 let html = '';
@@ -628,7 +714,7 @@
                     html = fileList.map(f => {
                         const src = `/uploads/${encodeURIComponent(f.filename)}`;
                         const isPdf = f.file_type === 'pdf';
-                        const deleteBtn = `<button onclick="deleteFileInline(${id}, ${f.id})" class="text-xs font-bold text-red-400 hover:text-red-600 border border-red-200 rounded px-2 py-0.5 transition-colors flex-shrink-0" title="삭제">&#10005;</button>`;
+                        const deleteBtn = `<button onclick="deleteFileInline(${id}, ${f.id})" class="no-print text-xs font-bold text-red-400 hover:text-red-600 border border-red-200 rounded px-2 py-0.5 transition-colors flex-shrink-0" title="삭제">&#10005;</button>`;
                         if (isPdf) {
                             return `<div class="border border-[#E5E5E5] rounded-md overflow-hidden mb-2">
                                 <iframe src="${src}" class="w-full" style="height:300px;" frameborder="0"></iframe>
@@ -654,10 +740,10 @@
                     html = '<p class="text-[#D4D4D4] text-xs">없음</p>';
                 }
                 // 파일 추가 입력 (5개 미만일 때만 표시)
-                const fieldName = category === '입금내역서' ? 'deposit_files' : 'id_card_files';
+                const fieldName = category === '입출금거래내역서' ? 'deposit_files' : 'id_card_files';
                 const remaining = 5 - fileList.length;
                 if (remaining > 0) {
-                    html += `<div class="mt-2 pt-2 border-t border-[#E5E5E5]">
+                    html += `<div class="no-print mt-2 pt-2 border-t border-[#E5E5E5]">
                         <label class="inline-flex items-center gap-1.5 cursor-pointer text-xs font-bold text-blue-500 hover:text-blue-700 transition-colors">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
                             파일 추가
@@ -666,14 +752,14 @@
                         <span class="text-[10px] text-[#A3A3A3] ml-2">${remaining}개 추가 가능 · PNG/JPG/PDF</span>
                     </div>`;
                 } else {
-                    html += `<div class="mt-2 pt-2 border-t border-[#E5E5E5]">
+                    html += `<div class="no-print mt-2 pt-2 border-t border-[#E5E5E5]">
                         <span class="text-[10px] text-[#A3A3A3]">최대 5개 도달</span>
                     </div>`;
                 }
                 return html;
             }
 
-            const depositFilesHTML = renderFilesSection(depositFiles, '입금내역서');
+            const depositFilesHTML = renderFilesSection(depositFiles, '입출금거래내역서');
             const idCardFilesHTML = renderFilesSection(idCardFiles, '신분증');
 
             $('#modalBody').html(`
@@ -745,9 +831,9 @@
                     <div class="border border-[#D4D4D4] px-3 py-3 sm:px-4 sm:py-3 min-h-[48px] sm:min-h-[60px] text-sm text-[#1A1A1A] leading-relaxed whitespace-pre-wrap">${esc(d.details) || '내용 없음'}</div>
                 </div>
 
-                <!-- 입금내역서 -->
+                <!-- 입출금거래내역서 -->
                 <div class="mb-4 sm:mb-5">
-                    <p class="text-xs sm:text-sm font-bold text-[#404040] mb-1.5">입금내역서 (${depositFiles.length}개)</p>
+                    <p class="text-xs sm:text-sm font-bold text-[#404040] mb-1.5">입출금거래내역서 (${depositFiles.length}개)</p>
                     <div class="border border-[#D4D4D4] p-2 sm:p-3 min-h-[60px] bg-[#FAFAFA]">${depositFilesHTML}</div>
                 </div>
 
@@ -794,7 +880,7 @@
                     <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">입금일 <span class="text-red-500">*</span></label><input id="create_deposit_date" type="date" class="${inputClass}"></div>
                     <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">입금액 <span class="text-red-500">*</span></label><input id="create_deposit_amount" type="number" class="${inputClass}" placeholder="0"></div>
                     <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">은행명 <span class="text-red-500">*</span></label><input id="create_bank_name" class="${inputClass}" maxlength="20" placeholder="은행명"></div>
-                    <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">환불계좌 <span class="text-red-500">*</span></label><input id="create_refund_account" class="${inputClass}" maxlength="16" placeholder="계좌번호 (숫자만)"></div>
+                    <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">사용계좌 <span class="text-red-500">*</span></label><input id="create_refund_account" class="${inputClass}" maxlength="16" placeholder="계좌번호 (숫자만)"></div>
                     <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">예금주 <span class="text-red-500">*</span></label><input id="create_refund_account_name" class="${inputClass}" maxlength="20" placeholder="예금주명"></div>
                 </div>
                 <div class="mb-3">
@@ -802,7 +888,7 @@
                     <textarea id="create_details" class="${inputClass}" rows="2" maxlength="200" placeholder="상세 사유를 입력하세요"></textarea>
                 </div>
                 <div class="mb-3">
-                    <label class="text-xs font-bold text-[#404040] mb-0.5 block">입금내역서 (최대 5개, PNG/JPG/PDF)</label>
+                    <label class="text-xs font-bold text-[#404040] mb-0.5 block">입출금거래내역서 (최대 5개, PNG/JPG/PDF)</label>
                     <input type="file" id="create_deposit_files" accept=".jpg,.jpeg,.png,.pdf" multiple class="text-xs text-[#737373]">
                 </div>
                 <div class="mb-3">
@@ -1018,11 +1104,11 @@
 
         // 수정 모드 토글
         function toggleEditMode() {
-            const d = allData.find(d => d.id === currentDetailId);
+            const d = dataById.get(currentDetailId);
             if (!d) return;
             isEditMode = true;
             modalMode = 'edit';
-            $('#btnEdit, #btnDelete, #btnPrint').hide();
+            $('#btnEdit, #btnDelete, #btnPrint, #btnDownloadWord').hide();
             $('#btnSaveEdit, #btnCancelEdit').removeClass('hidden').show();
             $('#btnSaveCreate').hide();
 
@@ -1034,8 +1120,8 @@
 
             // Multi-file management section — by category
             const files = d._files || [];
-            const editDepositFiles = files.filter(f => f.category === '입금내역서');
-            const editIdCardFiles = files.filter(f => f.category !== '입금내역서');
+            const editDepositFiles = files.filter(f => f.category === '입출금거래내역서');
+            const editIdCardFiles = files.filter(f => f.category !== '입출금거래내역서');
 
             function renderEditFileList(fileList) {
                 if (fileList.length === 0) return '<p class="text-xs text-[#D4D4D4]">없음</p>';
@@ -1055,11 +1141,11 @@
 
             const fileSection = `
                 <div class="mb-3">
-                    <label class="text-xs font-bold text-[#404040] mb-1 block">입금내역서 (${editDepositFiles.length}개)</label>
+                    <label class="text-xs font-bold text-[#404040] mb-1 block">입출금거래내역서 (${editDepositFiles.length}개)</label>
                     <div class="border border-[#D4D4D4] rounded px-3 py-2 bg-[#FAFAFA]">
                         <div class="mb-2">${renderEditFileList(editDepositFiles)}</div>
                         <div>
-                            <label class="text-xs text-[#A3A3A3] mb-0.5 block">새 입금내역서 추가 (최대 5개, PNG/JPG/PDF)</label>
+                            <label class="text-xs text-[#A3A3A3] mb-0.5 block">새 입출금거래내역서 추가 (최대 5개, PNG/JPG/PDF)</label>
                             <input type="file" id="edit_deposit_files" accept=".jpg,.jpeg,.png,.pdf" multiple class="text-xs text-[#737373]">
                         </div>
                     </div>
@@ -1084,7 +1170,10 @@
                     </div>
                     <div class="text-right">
                         <p class="text-xs text-[#A3A3A3] mb-0.5">진행 상태</p>
-                        <select id="edit_status" class="border border-[#D4D4D4] rounded px-2 py-1.5 text-sm font-bold outline-none">${statusOpts}</select>
+                        ${d.status === '완료'
+                            ? `<span class="inline-block border border-[#D4D4D4] bg-[#F5F5F5] rounded px-3 py-1.5 text-sm font-bold text-[#737373]">완료</span><input type="hidden" id="edit_status" value="완료">`
+                            : `<select id="edit_status" class="border border-[#D4D4D4] rounded px-2 py-1.5 text-sm font-bold outline-none">${statusOpts}</select>`
+                        }
                     </div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
@@ -1200,7 +1289,7 @@
         }
 
         async function deleteRequest() {
-            const d = allData.find(d => d.id === currentDetailId);
+            const d = dataById.get(currentDetailId);
             if (!d) return;
             const result = await Swal.fire({
                 title: '정말 삭제하시겠습니까?',
@@ -1250,17 +1339,21 @@
 
         // 엑셀
         function exportToExcel() {
-            const sel = table.rows({ selected: true }).data().toArray();
-            if (sel.length === 0) return Swal.fire({ title: '항목을 선택하세요', icon: 'info', timer: 1200, showConfirmButton: false });
+            let rows = table.rows({ selected: true }).data().toArray();
+            // 선택된 행이 없으면 필터된 전체 행 내보내기
+            if (rows.length === 0) {
+                rows = table.rows({ search: 'applied' }).data().toArray();
+                if (rows.length === 0) return Swal.fire({ title: '내보낼 데이터가 없습니다', icon: 'info', timer: 1200, showConfirmButton: false });
+            }
             try {
-                const data = sel.map(r => {
+                const data = rows.map(r => {
                     const code = $(r[2]).text();
                     const item = allData.find(d => d.request_code === code);
                     return {
-                        '신청일': r[1],
+                        '신청일': fmtDate(item.request_date),
                         '식별코드': code,
                         '계약자 코드': item.contractor_code || '',
-                        '가맹점 코드': item.merchant_code,
+                        '가맹점 코드': item.merchant_code || '',
                         '신청인': item.applicant_name,
                         '연락처': fmtPhone(item.applicant_phone),
                         '입금일': fmtDate(item.deposit_date),
@@ -1268,17 +1361,79 @@
                         '은행': item.bank_name,
                         '사용계좌': item.user_account,
                         '예금주': item.user_account_name,
-                        '상태': item.status
+                        '상세사유': item.details || '',
+                        '상태': item.status,
+                        '등록일시': item.created_at ? new Date(item.created_at).toLocaleString('ko-KR') : ''
                     };
                 });
                 const ws = XLSX.utils.json_to_sheet(data);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "사유서_데이터");
-                XLSX.writeFile(wb, `ReasonsForm_Data.xlsx`);
+                const today = new Date();
+                const dateSuffix = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+                XLSX.writeFile(wb, `ReasonsForm_Data_${dateSuffix}.xlsx`);
             } catch (err) {
                 console.error('Excel export error:', err);
                 Swal.fire('오류', '엑셀 파일 생성 중 오류가 발생했습니다.', 'error');
             }
+        }
+
+        // Word 다운로드
+        async function downloadWord() {
+            if (!currentDetailId) return;
+            try {
+                const response = await fetch(`/api/admin/request/${currentDetailId}/docx`, { credentials: 'include' });
+                
+                // 세션 만료 처리 (safeFetch의 로직과 동일하게)
+                if (response.status === 401) {
+                    await Swal.fire({ icon: 'warning', title: '세션 만료', text: '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.', confirmButtonText: '확인' });
+                    location.reload();
+                    return;
+                }
+
+                if (!response.ok) {
+                    let errorMessage = '파일을 생성할 수 없습니다.';
+                    try {
+                        const errorJson = await response.json();
+                        errorMessage = errorJson.error || errorMessage;
+                    } catch(e) {}
+                    throw new Error(errorMessage);
+                }
+
+                const blob = await response.blob();
+                const a = document.createElement('a');
+                const d = dataById.get(currentDetailId);
+                const filename = `사유서_${d ? d.request_code : currentDetailId}.docx`;
+
+                const reader = new FileReader();
+                reader.onload = function() {
+                    a.href = reader.result;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                };
+                reader.readAsDataURL(blob);
+            } catch (err) {
+                Swal.fire('오류', err.message, 'error');
+            }
+        }
+
+        // 인쇄
+        function printPage() {
+            window.print();
+        }
+
+        // 이미지 확대
+        function zoomImage(src) {
+            Swal.fire({
+                imageUrl: src,
+                imageAlt: '상세 이미지',
+                showCloseButton: true,
+                showConfirmButton: false,
+                width: 'auto',
+                customClass: { image: 'max-h-[85vh] object-contain' }
+            });
         }
     </script>
 </body>
