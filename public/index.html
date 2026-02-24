@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>사유서</title>
+    <script>window.tailwind = { config: { } };</script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <style>
+        body { font-family: "Pretendard Variable", Pretendard, sans-serif; letter-spacing: -0.02em; }
+        input::placeholder { color: #cbd5e1 !important; font-weight: 400 !important; opacity: 0.6; }
+        .drag-over { border-color: #2563eb !important; background-color: #eff6ff !important; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+    <nav class="bg-white shadow-sm border-b sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="/public/index.html" class="text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors no-underline">사유서 제작</a>
+            <div class="flex items-center gap-4">
+                <span id="liveClock" class="text-sm font-bold text-gray-400 tabular-nums tracking-tight"></span>
+                <button onclick="showStatusCheck()" class="text-sm font-black text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-all shadow-sm active:scale-[0.97]">진행 상태 조회</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-3xl mx-auto px-4 py-6 sm:py-10">
+
+        <div id="submitSection" class="bg-white rounded-lg shadow-sm p-5 sm:p-8 border border-gray-200">
+            <div class="mb-4 sm:mb-6 bg-amber-50 border border-amber-200 rounded-lg px-5 py-4">
+                <p class="text-amber-800 font-bold text-sm">본 사유서는 은행에 제출될 공식 자료입니다. 정확하게 작성해 주세요.</p>
+            </div>
+            <div class="mb-6 sm:mb-10">
+                <h2 class="text-3xl font-black text-gray-800 tracking-tight">반환 청구 사유서</h2>
+                <p class="text-gray-400 mt-1 text-base font-medium">모든 항목을 공백 없이 정확히 기입해 주세요.</p>
+            </div>
+
+            <form id="requestForm" class="space-y-10">
+                <!-- 1. 신청인 정보 -->
+                <div>
+                    <h3 class="text-sm font-black text-blue-600 mb-4 tracking-widest flex items-center gap-2">
+                        <span class="w-1 h-4 bg-blue-600 rounded-full"></span> 01. 신청인 정보
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">신청인 이름</label>
+                            <input type="text" name="applicant_name" maxlength="20" placeholder="예: 홍길동 (최대 20자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-bold text-base">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">신청인 연락처</label>
+                            <input type="tel" name="applicant_phone" id="input_phone" maxlength="13" placeholder="숫자만" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-bold text-base">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. 입금 및 청구 상세 -->
+                <div>
+                    <h3 class="text-sm font-black text-blue-600 mb-4 tracking-widest flex items-center gap-2">
+                        <span class="w-1 h-4 bg-blue-600 rounded-full"></span> 02. 상세
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">신청일자</label>
+                            <input type="date" name="request_date" id="date_request" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">실제 입금일자</label>
+                            <input type="date" name="deposit_date" id="date_deposit" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">입금액 (원)</label>
+                            <input type="text" name="deposit_amount" id="input_amount" placeholder="숫자만 입력" required class="w-full border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-black text-2xl text-blue-600">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">계약자 (구분코드1)</label>
+                            <input type="text" name="contractor_type" maxlength="30" placeholder="한글, 영어, 숫자 (최대 30자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">가맹점 (구분코드2)</label>
+                            <input type="text" name="merchant_type" maxlength="30" placeholder="한글, 영어, 숫자 (최대 30자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                        </div>
+                        <div class="md:col-span-2">
+                            <div class="flex justify-between items-end mb-1.5 ml-1">
+                                <label class="block text-sm font-bold text-gray-500">상세 청구 사유 (최대 200자)</label>
+                                <span id="char-count" class="text-xs font-bold text-gray-400 tracking-tighter">0 / 200</span>
+                            </div>
+                            <textarea id="input_details" name="details" maxlength="200" rows="3" class="w-full border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all resize-none font-medium text-gray-600 text-base" placeholder="오입금 상황을 상세히 적어주세요."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. 반환 계좌 정보 -->
+                <div>
+                    <h3 class="text-sm font-black text-blue-600 mb-4 tracking-widest flex items-center gap-2">
+                        <span class="w-1 h-4 bg-blue-600 rounded-full"></span> 03. 사용 계좌
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">은행명</label>
+                            <input type="text" name="bank_name" maxlength="20" placeholder="예: 신한은행" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">계좌명 (예금주)</label>
+                            <input type="text" name="refund_account_name" maxlength="20" placeholder="실명 (최대 20자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-bold text-gray-500 mb-1.5 ml-1">사용 계좌번호</label>
+                            <input type="text" name="refund_account" id="input_account" maxlength="16" placeholder="- 없이 숫자만 입력 (최대 16자)" required class="w-full border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-black text-xl tracking-tighter">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. 신분증 첨부 -->
+                <div>
+                    <h3 class="text-sm font-black text-blue-600 mb-4 tracking-widest flex items-center gap-2">
+                        <span class="w-1 h-4 bg-blue-600 rounded-full"></span> 04. 신분증 첨부
+                    </h3>
+
+                    <input id="file-upload" name="id_card_file" type="file" class="hidden" accept=".png,.jpg,.jpeg">
+
+                    <div id="drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-12 border-2 border-gray-200 border-dashed rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-all cursor-pointer group">
+                        <svg class="h-14 w-14 text-gray-300 group-hover:text-blue-500 transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                        <p class="text-gray-700 font-bold text-base">신분증 파일을 이 곳에 끌어다 놓으세요(최대10MB)</p>
+                        <p class="text-sm text-gray-400 mt-2">또는 클릭하여 파일 선택 (PNG, JPG)</p>
+                    </div>
+
+                    <div id="filePreview" class="hidden mt-4">
+                        <div class="flex flex-col gap-4 p-6 bg-blue-50 border border-blue-100 rounded-lg relative">
+                            <p class="text-xs font-black text-blue-400 tracking-widest">신분증 미리보기</p>
+                            <div class="flex items-center gap-6">
+                                <div id="previewThumb" class="w-32 h-20 bg-white border rounded-md overflow-hidden shadow-inner flex items-center justify-center">
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p id="previewName" class="text-lg font-black text-blue-900 truncate"></p>
+                                    <p id="previewSize" class="text-sm font-bold text-blue-400"></p>
+                                </div>
+                                <button type="button" onclick="clearFile()" class="w-10 h-10 rounded-lg bg-white text-gray-400 hover:text-red-500 flex items-center justify-center transition-all shadow-sm border border-gray-200">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-start bg-gray-50 p-5 rounded-lg border border-gray-200">
+                    <div class="flex items-center h-5">
+                        <input id="terms" name="terms" type="checkbox" required class="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer">
+                    </div>
+                    <div class="ml-3 text-base flex-1 font-bold text-gray-700 cursor-pointer underline decoration-blue-200 underline-offset-4" onclick="document.getElementById('terms').click()">
+                        개인정보 수집 및 이용 동의 (필수)
+                        <button type="button" onclick="event.stopPropagation(); openTermsModal()" class="text-xs font-black bg-blue-600 text-white px-2.5 py-0.5 rounded ml-2 shadow-sm tracking-tighter">보기</button>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-blue-600 text-white font-black py-4 rounded-lg hover:bg-blue-700 transition-all shadow-sm active:scale-[0.98] text-xl">
+                    사유서 제출하기
+                </button>
+            </form>
+        </div>
+
+        <!-- 상태 조회 -->
+        <div id="statusSection" class="hidden bg-white rounded-lg shadow-sm p-6 sm:p-8 border border-gray-200">
+            <button onclick="showSubmit()" class="text-sm font-bold text-gray-500 mb-8 border border-gray-200 px-4 py-2 rounded-md hover:bg-gray-50 transition-all flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>
+                사유서 작성으로 돌아가기
+            </button>
+
+            <div class="mb-8">
+                <h2 class="text-2xl font-black text-gray-800 tracking-tight">진행 상태 조회</h2>
+                <p class="text-base text-gray-400 mt-1">발급받은 식별코드를 입력하세요.</p>
+            </div>
+
+            <div class="space-y-6">
+                <div class="flex gap-2">
+                    <input type="text" id="status_code" placeholder="식별코드 입력 (예: 260222-001-ABC)" maxlength="15" class="flex-1 border border-gray-200 rounded-lg py-3.5 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 font-bold text-lg tracking-tight placeholder:text-gray-300 placeholder:font-medium">
+                    <button onclick="checkStatus()" class="bg-[#1A1A1A] text-white px-6 py-3.5 rounded-lg font-bold hover:bg-black transition-all text-base whitespace-nowrap">조회</button>
+                </div>
+
+                <div id="statusResult" class="hidden">
+                    <div class="border border-gray-200 rounded-lg overflow-hidden">
+                        <div class="bg-[#FAFAFA] px-6 py-5 border-b border-gray-200">
+                            <p class="text-sm font-bold text-gray-400 mb-1.5">처리 상태</p>
+                            <h3 id="res_status" class="text-3xl font-black text-[#1A1A1A] tracking-tight"></h3>
+                        </div>
+                        <div class="px-6 py-5 flex justify-between items-end">
+                            <div>
+                                <p class="text-sm font-bold text-gray-400 mb-1">신청인</p>
+                                <p id="res_name" class="text-lg font-bold text-[#1A1A1A]"></p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm font-bold text-gray-400 mb-1">접수일시</p>
+                                <p id="res_date" class="text-base font-medium text-gray-500"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-upload');
+        const filePreview = document.getElementById('filePreview');
+        const previewThumb = document.getElementById('previewThumb');
+        const previewName = document.getElementById('previewName');
+        const previewSize = document.getElementById('previewSize');
+        let selectedFile = null;
+
+        // 기호 자동 삭제: 한글, 영어, 숫자만 허용
+        const stripSymbols = v => v.replace(/[^ㄱ-ㅎ가-힣ㅏ-ㅣa-zA-Z0-9]/g, '');
+        // 상세 사유용: 공백·줄바꿈·마침표 추가 허용
+        const stripSymbolsText = v => v.replace(/[^ㄱ-ㅎ가-힣ㅏ-ㅣa-zA-Z0-9\s.]/g, '');
+
+        // 모든 텍스트 입력에 기호 삭제 적용 (한글 IME 조합 중에는 건너뜀)
+        document.querySelectorAll('.form-input-custom').forEach(input => {
+            let composing = false;
+            input.addEventListener('compositionstart', () => { composing = true; });
+            input.addEventListener('compositionend', e => {
+                composing = false;
+                e.target.value = stripSymbols(e.target.value);
+            });
+            input.addEventListener('input', e => {
+                if (composing) return;
+                e.target.value = stripSymbols(e.target.value);
+            });
+        });
+
+        // Drag & Drop Events
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
+            dropZone.addEventListener(e, (evt) => { evt.preventDefault(); evt.stopPropagation(); }, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(e => {
+            dropZone.addEventListener(e, () => dropZone.classList.add('drag-over'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(e => {
+            dropZone.addEventListener(e, () => dropZone.classList.remove('drag-over'), false);
+        });
+
+        dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => { if (fileInput.files.length > 0) handleFiles(fileInput.files); });
+
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            const file = files[0];
+            const allowed = /(\.png|\.jpg|\.jpeg)$/i;
+
+            if (!allowed.exec(file.name)) {
+                return Swal.fire('오류', '이미지 파일만 업로드 가능합니다. (JPG, PNG)', 'error');
+            }
+            if (file.size > 10 * 1024 * 1024) {
+                return Swal.fire('오류', '파일 크기가 10MB를 초과합니다.', 'error');
+            }
+
+            selectedFile = file;
+            try { const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files; } catch(e) {}
+
+            dropZone.classList.add('hidden');
+            filePreview.classList.remove('hidden');
+            previewName.textContent = file.name;
+            previewSize.textContent = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = e => { previewThumb.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover">`; };
+                reader.readAsDataURL(file);
+            } else {
+                previewThumb.innerHTML = `<span class="text-sm font-black text-gray-400">미리보기 불가</span>`;
+            }
+        }
+
+        function clearFile() {
+            selectedFile = null;
+            fileInput.value = "";
+            dropZone.classList.remove('hidden');
+            filePreview.classList.add('hidden');
+            previewThumb.innerHTML = "";
+        }
+
+        const kstOpts = { timeZone: 'Asia/Seoul' };
+        const todayKST = new Date().toLocaleDateString('sv-SE', kstOpts);
+        document.getElementById('date_request').max = todayKST;
+        document.getElementById('date_deposit').max = todayKST;
+        document.getElementById('date_request').value = todayKST;
+        document.getElementById('date_deposit').value = todayKST;
+
+        const clockEl = document.getElementById('liveClock');
+        function updateClock() {
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('ko-KR', { timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit', weekday:'short' });
+            const timeStr = now.toLocaleTimeString('ko-KR', { timeZone:'Asia/Seoul', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+            clockEl.textContent = dateStr + ' ' + timeStr;
+        }
+        updateClock();
+        setInterval(updateClock, 1000);
+
+        document.getElementById('input_phone').addEventListener('input', e => {
+            let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+            if (v.length > 3 && v.length <= 7) v = v.slice(0, 3) + '-' + v.slice(3);
+            else if (v.length > 7) v = v.slice(0, 3) + '-' + v.slice(3, 7) + '-' + v.slice(7);
+            e.target.value = v;
+        });
+
+        document.getElementById('input_amount').addEventListener('input', e => {
+            let v = e.target.value.replace(/\D/g, '');
+            if (v.length > 10) v = v.slice(0, 10);
+            if (parseInt(v) > 9999999999) v = "9999999999";
+            e.target.value = v.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        });
+
+        document.getElementById('input_account').addEventListener('input', e => {
+            e.target.value = e.target.value.replace(/\D/g, '').slice(0, 16);
+        });
+
+        document.getElementById('status_code').addEventListener('input', e => {
+            e.target.value = e.target.value.replace(/[^a-zA-Z0-9\-]/g, '').toUpperCase();
+        });
+
+        const detailsInput = document.getElementById('input_details');
+        const charCount = document.getElementById('char-count');
+        let detailsComposing = false;
+        detailsInput.addEventListener('compositionstart', () => { detailsComposing = true; });
+        detailsInput.addEventListener('compositionend', () => {
+            detailsComposing = false;
+            detailsInput.value = stripSymbolsText(detailsInput.value);
+            charCount.textContent = `${detailsInput.value.length} / 200`;
+            if (detailsInput.value.length >= 200) charCount.classList.add('text-red-500');
+            else charCount.classList.remove('text-red-500');
+        });
+        detailsInput.addEventListener('input', () => {
+            if (detailsComposing) return;
+            detailsInput.value = stripSymbolsText(detailsInput.value);
+            charCount.textContent = `${detailsInput.value.length} / 200`;
+            if (detailsInput.value.length >= 200) charCount.classList.add('text-red-500');
+            else charCount.classList.remove('text-red-500');
+        });
+
+        function openTermsModal() {
+            Swal.fire({
+                title: '개인정보 수집 동의',
+                html: `<div class="text-left text-sm h-48 overflow-y-auto p-4 border rounded bg-gray-50 leading-relaxed font-bold">
+                        1. 수집항목: 성명, 연락처, 계좌정보, ip정보, 신분증 사본<br>2. 이용목적: 사유서 처리 및 본인확인<br>3. 보유기간: 5년 보관 후 파기
+                      </div>`,
+                confirmButtonText: '확인', confirmButtonColor: '#2563eb'
+            });
+        }
+
+        const form = document.getElementById('requestForm');
+        form.addEventListener('submit', async e => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const errors = [];
+            if (!formData.get('applicant_name').trim()) errors.push('이름 필수');
+            if (formData.get('applicant_phone').replace(/\D/g, '').length < 10) errors.push('연락처 확인');
+            if (!formData.get('deposit_amount')) errors.push('금액 필수');
+            if (!selectedFile && !fileInput.files[0]) errors.push('신분증 파일 필수');
+            if (!formData.get('terms')) errors.push('약관 동의 필수');
+            if (formData.get('deposit_date') > formData.get('request_date')) errors.push('입금일자는 신청일자와 같거나 이전이어야 합니다');
+
+            if (errors.length > 0) {
+                Swal.fire({ icon:'warning', title:'입력 누락', html: errors.join('<br>') });
+                return;
+            }
+
+            Swal.fire({ title: '제출 중...', didOpen: () => Swal.showLoading() });
+            formData.set('deposit_amount', formData.get('deposit_amount').replace(/,/g, ''));
+            formData.set('terms_agreed', formData.get('terms') ? '1' : '0');
+            if (selectedFile) formData.set('id_card_file', selectedFile, selectedFile.name);
+
+            try {
+                const response = await fetch('/api/request', { method: 'POST', body: formData });
+                const res = await response.json();
+                if (res.success) {
+                    const code = String(res.requestCode).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+                    let copied = false;
+                    try { const ta = document.createElement('textarea'); ta.value = res.requestCode; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); copied = document.execCommand('copy'); document.body.removeChild(ta); } catch(e) {}
+                    Swal.fire({ icon:'success', title:'제출 완료', html:`<p class="text-sm text-gray-500 mt-2">식별코드: <strong class="text-blue-600 text-xl">${code}</strong></p><p class="text-xs text-gray-400 mt-1">${copied ? '클립보드에 복사되었습니다' : '식별코드를 메모해 주세요'}</p>` })
+                    .then(() => location.reload());
+                } else { Swal.fire('오류', res.error, 'error'); }
+            } catch (err) { console.error('Submit error:', err); Swal.fire('오류', err.message || '서버와 통신할 수 없습니다.', 'error'); }
+        });
+
+        function showStatusCheck() { document.getElementById('submitSection').classList.add('hidden'); document.getElementById('statusSection').classList.remove('hidden'); window.scrollTo(0,0); }
+        function showSubmit() { document.getElementById('statusSection').classList.add('hidden'); document.getElementById('submitSection').classList.remove('hidden'); }
+        async function checkStatus() {
+            const code = document.getElementById('status_code').value.trim();
+            if(!code) return;
+            try {
+                const res = await (await fetch(`/api/status/${code}`)).json();
+                if (res.success) {
+                    document.getElementById('statusResult').classList.remove('hidden');
+                    document.getElementById('res_status').textContent = res.data.status;
+                    document.getElementById('res_name').textContent = res.data.applicant_name;
+                    document.getElementById('res_date').textContent = new Date(res.data.created_at).toLocaleString('ko-KR');
+                } else { Swal.fire('조회 실패', '해당 식별코드를 찾을 수 없습니다.', 'error'); }
+            } catch (err) { Swal.fire('오류', '서버와 통신할 수 없습니다.', 'error'); }
+        }
+    </script>
+</body>
+</html>
