@@ -18,7 +18,7 @@ BEGIN
         created_at      DATETIME DEFAULT GETDATE()
     );
 
-    -- 기본 관리자 (Password: tkdbtj2026!@)
+    -- 기본 관리자 (배포 후 반드시 비밀번호 변경 필요)
     INSERT INTO Users (username, password_hash, name)
     VALUES ('admin', '$2b$10$8iAuwIa1S4azwk1nrsu1P.RBnIT0Ed0rqgVmShnkYBr.FP9zdWQAy', N'시스템관리자');
 END
@@ -56,7 +56,37 @@ BEGIN
 END
 
 -- ============================================================
--- 3. Sessions 테이블 (인증 세션 관리)
+-- 3. RequestFiles 테이블 (다중 파일 첨부)
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'RequestFiles')
+BEGIN
+    CREATE TABLE RequestFiles (
+        id              INT IDENTITY(1,1) PRIMARY KEY,
+        request_id      INT NOT NULL,
+        filename        NVARCHAR(50) NOT NULL,      -- UUID.확장자
+        original_name   NVARCHAR(255) NOT NULL,     -- 원본 파일명
+        file_type       NVARCHAR(10) NOT NULL,      -- jpg, png, pdf
+        category        NVARCHAR(20) NOT NULL DEFAULT N'신분증',  -- 입금내역서 / 신분증
+        uploaded_at     DATETIME DEFAULT GETDATE(),
+        CONSTRAINT FK_RequestFiles_Requests
+            FOREIGN KEY (request_id) REFERENCES Requests(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX idx_rf_request_id ON RequestFiles(request_id);
+END
+
+-- 마이그레이션: 기존 id_card_file → RequestFiles 복사 (멱등성)
+INSERT INTO RequestFiles (request_id, filename, original_name, file_type)
+SELECT r.id, r.id_card_file, r.id_card_file,
+       LOWER(RIGHT(r.id_card_file, CHARINDEX('.', REVERSE(r.id_card_file)) - 1))
+FROM Requests r
+WHERE r.id_card_file IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM RequestFiles rf WHERE rf.request_id = r.id AND rf.filename = r.id_card_file
+  );
+
+-- ============================================================
+-- 4. Sessions 테이블 (인증 세션 관리)
 -- ============================================================
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Sessions')
 BEGIN
@@ -68,7 +98,7 @@ BEGIN
 END
 
 -- ============================================================
--- 4. Migration: 기존 DB 컬럼 변경 (멱등성 보장)
+-- 5. Migration: 기존 DB 컬럼 변경 (멱등성 보장)
 -- ============================================================
 
 -- 4-1. terms 컬럼 추가
@@ -82,10 +112,26 @@ IF COL_LENGTH('Requests', 'terms_ip') IS NULL
 IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='Requests' AND COLUMN_NAME='applicant_name' AND CHARACTER_MAXIMUM_LENGTH < 20)
     ALTER TABLE Requests ALTER COLUMN applicant_name NVARCHAR(20) NOT NULL;
 
--- 4-3. 과대 컬럼 축소 (실제 데이터 범위에 맞춤)
--- Users
+-- 4-3. RequestFiles category 컬럼 추가 (입금내역서 / 신분증 분리)
+IF COL_LENGTH('RequestFiles', 'category') IS NULL
+    ALTER TABLE RequestFiles ADD category NVARCHAR(20) NOT NULL DEFAULT N'신분증';
+
+-- 4-4. 과대 컬럼 축소 (실제 데이터 범위에 맞춤)
+--       UNIQUE/INDEX 제약 조건이 걸린 컬럼은 DROP → ALTER → 재생성 필요
+
+-- Users.username (UNIQUE 제약 조건)
 IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='Users' AND COLUMN_NAME='username' AND CHARACTER_MAXIMUM_LENGTH > 30)
+BEGIN
+    DECLARE @uq_username NVARCHAR(256);
+    SELECT @uq_username = kc.name
+    FROM sys.key_constraints kc
+    JOIN sys.index_columns ic ON kc.unique_index_id = ic.index_id AND kc.parent_object_id = ic.object_id
+    JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+    WHERE kc.parent_object_id = OBJECT_ID('Users') AND c.name = 'username' AND kc.type = 'UQ';
+    IF @uq_username IS NOT NULL EXEC('ALTER TABLE Users DROP CONSTRAINT ' + @uq_username);
     ALTER TABLE Users ALTER COLUMN username NVARCHAR(30) NOT NULL;
+    IF @uq_username IS NOT NULL ALTER TABLE Users ADD CONSTRAINT UQ_Users_username UNIQUE (username);
+END
 
 IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='Users' AND COLUMN_NAME='password_hash' AND CHARACTER_MAXIMUM_LENGTH > 72)
     ALTER TABLE Users ALTER COLUMN password_hash NVARCHAR(72) NOT NULL;
@@ -93,15 +139,29 @@ IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='Users' AND
 IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='Users' AND COLUMN_NAME='name' AND CHARACTER_MAXIMUM_LENGTH > 20)
     ALTER TABLE Users ALTER COLUMN name NVARCHAR(20) NOT NULL;
 
--- Requests
+-- Requests.request_code (UNIQUE 제약 조건 + INDEX)
 IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='Requests' AND COLUMN_NAME='request_code' AND CHARACTER_MAXIMUM_LENGTH > 20)
+BEGIN
+    DECLARE @uq_rcode NVARCHAR(256);
+    SELECT @uq_rcode = kc.name
+    FROM sys.key_constraints kc
+    JOIN sys.index_columns ic ON kc.unique_index_id = ic.index_id AND kc.parent_object_id = ic.object_id
+    JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+    WHERE kc.parent_object_id = OBJECT_ID('Requests') AND c.name = 'request_code' AND kc.type = 'UQ';
+    IF @uq_rcode IS NOT NULL EXEC('ALTER TABLE Requests DROP CONSTRAINT ' + @uq_rcode);
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('Requests') AND name = 'idx_request_code')
+        DROP INDEX idx_request_code ON Requests;
     ALTER TABLE Requests ALTER COLUMN request_code NVARCHAR(20) NOT NULL;
+    IF @uq_rcode IS NOT NULL ALTER TABLE Requests ADD CONSTRAINT UQ_Requests_request_code UNIQUE (request_code);
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('Requests') AND name = 'idx_request_code')
+        CREATE INDEX idx_request_code ON Requests(request_code);
+END
 
 IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='Requests' AND COLUMN_NAME='id_card_file' AND CHARACTER_MAXIMUM_LENGTH > 50)
     ALTER TABLE Requests ALTER COLUMN id_card_file NVARCHAR(50);
 
 -- ============================================================
--- 5. SSMS 설명 (MS_Description 확장 속성)
+-- 6. SSMS 설명 (MS_Description 확장 속성)
 --    패턴: DROP 시도 → 실패 무시 → ADD (멱등성)
 -- ============================================================
 
@@ -200,3 +260,28 @@ EXEC sp_addextendedproperty N'MS_Description', N'세션 데이터 (JSON 직렬�
 
 BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'Sessions', N'COLUMN',N'expires'; END TRY BEGIN CATCH END CATCH;
 EXEC sp_addextendedproperty N'MS_Description', N'세션 만료 일시 (maxAge: 8시간)', N'SCHEMA',N'dbo', N'TABLE',N'Sessions', N'COLUMN',N'expires';
+
+-- ─── RequestFiles 테이블 ───
+BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles'; END TRY BEGIN CATCH END CATCH;
+EXEC sp_addextendedproperty N'MS_Description', N'사유서 첨부파일 관리. 카테고리별(입금내역서/신분증) 최대 5개 파일(JPG, PNG, PDF) 연결.', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles';
+
+BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'id'; END TRY BEGIN CATCH END CATCH;
+EXEC sp_addextendedproperty N'MS_Description', N'자동 증가 기본키', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'id';
+
+BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'request_id'; END TRY BEGIN CATCH END CATCH;
+EXEC sp_addextendedproperty N'MS_Description', N'Requests 테이블 FK (ON DELETE CASCADE)', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'request_id';
+
+BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'filename'; END TRY BEGIN CATCH END CATCH;
+EXEC sp_addextendedproperty N'MS_Description', N'디스크 저장 파일명 (UUID.확장자)', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'filename';
+
+BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'original_name'; END TRY BEGIN CATCH END CATCH;
+EXEC sp_addextendedproperty N'MS_Description', N'사용자가 업로드한 원본 파일명', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'original_name';
+
+BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'file_type'; END TRY BEGIN CATCH END CATCH;
+EXEC sp_addextendedproperty N'MS_Description', N'파일 확장자 (jpg, png, pdf)', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'file_type';
+
+BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'category'; END TRY BEGIN CATCH END CATCH;
+EXEC sp_addextendedproperty N'MS_Description', N'파일 카테고리 (입금내역서 또는 신분증)', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'category';
+
+BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'uploaded_at'; END TRY BEGIN CATCH END CATCH;
+EXEC sp_addextendedproperty N'MS_Description', N'업로드 일시', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'uploaded_at';

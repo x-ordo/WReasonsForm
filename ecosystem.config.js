@@ -3,6 +3,7 @@ module.exports = {
     name: 'reasonsform',
     script: './src/server.js',
     cwd: __dirname,
+    node_args: '--disable-proto=throw',
     instances: 1,
     autorestart: true,
     watch: false,
