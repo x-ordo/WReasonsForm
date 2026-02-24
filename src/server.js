@@ -185,15 +185,15 @@ app.use(session({
 // Uploads: 인증된 관리자만 접근 가능 (세션 미들웨어 이후에 등록)
 app.use('/uploads', (req, res, next) => {
     if (req.session && req.session.user) return next();
-    res.status(403).json({ error: 'Forbidden' });
+    return res.status(403).json({ error: 'Forbidden' });
 }, express.static(path.join(__dirname, '../uploads')));
 
 // Auth Middleware
 const authMiddleware = (req, res, next) => {
     if (req.session && req.session.user) {
-        next();
+        return next();
     } else {
-        res.status(401).json({ success: false, error: 'Unauthorized access' });
+        return res.status(401).json({ success: false, error: 'Unauthorized access' });
     }
 };
 
@@ -336,29 +336,30 @@ app.post('/api/admin/login', loginLimiter, async (req, res) => {
                         console.error('Session Save Error:', err);
                         return res.status(500).json({ success: false, error: '세션 저장 중 오류가 발생했습니다. 다시 시도해 주세요.' });
                     }
-                    res.json({ success: true, user: req.session.user });
+                    return res.json({ success: true, user: req.session.user });
                 });
             }
         } else {
             await bcrypt.compare(password, DUMMY_HASH);
         }
-        res.status(401).json({ success: false, error: '아이디 또는 비밀번호가 올바르지 않습니다.' });
+        return res.status(401).json({ success: false, error: '아이디 또는 비밀번호가 올바르지 않습니다.' });
     } catch (err) {
-        res.status(500).json({ success: false, error: classifyError(err, 'POST /api/admin/login') });
+        return res.status(500).json({ success: false, error: classifyError(err, 'POST /api/admin/login') });
     }
 });
 
 // Check Session
 app.get('/api/admin/me', (req, res) => {
-    if (req.session.user) res.json({ success: true, user: req.session.user });
-    else res.status(401).json({ success: false });
+    if (req.session.user) return res.json({ success: true, user: req.session.user });
+    else return res.status(401).json({ success: false });
 });
 
 // Logout
 app.post('/api/admin/logout', (req, res) => {
     req.session.destroy((err) => {
+        if (err) console.error('Session destroy error:', err);
         res.clearCookie('reasonsform.sid');
-        res.json({ success: true });
+        return res.json({ success: true });
     });
 });
 
@@ -480,17 +481,17 @@ app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', 
             const maskedName = d.applicant_name ? d.applicant_name.charAt(0) + '**' : '***';
             sendTelegramNotification(
                 `<b>새 사유서 접수</b>\n식별코드: <code>${requestCode}</code>\n신청인: ${maskedName}\n파일: ${allFiles.length}개\n접수시간: ${kstTime}`
-            );
+            ).catch(() => {});
 
             return res.json({ success: true, requestCode });
         } catch (txErr) {
-            try { await transaction.rollback(); } catch (_) {}
+            try { await transaction.rollback(); } catch (rbErr) { console.error('Transaction rollback failed:', rbErr); }
             cleanupUpload(req);
             throw txErr;
         }
     } catch (err) {
         cleanupUpload(req);
-        res.status(500).json({ success: false, error: classifyError(err, 'POST /api/request') });
+        return res.status(500).json({ success: false, error: classifyError(err, 'POST /api/request') });
     }
 });
 
@@ -516,10 +517,10 @@ app.get('/api/status/:code', statusLimiter, async (req, res) => {
             .query('SELECT applicant_name, status, created_at FROM Requests WHERE request_code = @code');
         if (result.recordset.length > 0) {
             const row = result.recordset[0];
-            const name = row.applicant_name || '***';
-            res.json({ success: true, data: { ...row, applicant_name: name[0] + '**' } });
-        } else res.status(404).json({ success: false, error: '해당 식별코드로 접수된 사유서를 찾을 수 없습니다.' });
-    } catch (err) { res.status(500).json({ success: false, error: classifyError(err, 'GET /api/status') }); }
+            const name = row.applicant_name || '';
+            return res.json({ success: true, data: { ...row, applicant_name: name.length > 0 ? name[0] + '**' : '***' } });
+        } else return res.status(404).json({ success: false, error: '해당 식별코드로 접수된 사유서를 찾을 수 없습니다.' });
+    } catch (err) { return res.status(500).json({ success: false, error: classifyError(err, 'GET /api/status') }); }
 });
 
 // Admin APIs (Protected)
@@ -533,8 +534,8 @@ app.get('/api/admin/requests', authMiddleware, async (req, res) => {
               ON fc.request_id = r.id
             ORDER BY r.created_at DESC
         `);
-        res.json({ success: true, data: result.recordset });
-    } catch (err) { res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/requests') }); }
+        return res.json({ success: true, data: result.recordset });
+    } catch (err) { return res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/requests') }); }
 });
 
 app.get('/api/admin/request/:id', authMiddleware, async (req, res) => {
@@ -546,8 +547,8 @@ app.get('/api/admin/request/:id', authMiddleware, async (req, res) => {
         const data = result.recordset[0];
         if (!data) return res.status(404).json({ success: false, error: '상세 정보를 찾을 수 없습니다.' });
         data.files = files.recordset;
-        res.json({ success: true, data });
-    } catch (err) { res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/request/:id') }); }
+        return res.json({ success: true, data });
+    } catch (err) { return res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/request/:id') }); }
 });
 
 app.get('/api/admin/request/:id/docx', authMiddleware, async (req, res) => {
@@ -648,15 +649,15 @@ app.get('/api/admin/request/:id/docx', authMiddleware, async (req, res) => {
         const filename = encodeURIComponent(`사유서_${data.request_code}.docx`);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
-        res.send(buffer);
-    } catch (err) { res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/request/:id/docx') }); }
+        return res.send(buffer);
+    } catch (err) { return res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/request/:id/docx') }); }
 });
 
 // Add Files to Request (Admin) — 상세보기에서 카테고리별 파일 추가
 // NOTE: Express v5에서는 구체적 경로(/:id/files)가 덜 구체적 경로(/) 앞에 등록되어야 함
 app.post('/api/admin/request/:id/files', authMiddleware, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 5 }]), fixUploadedFileNames, validateFileMagic, async (req, res) => {
     try {
-        const requestId = parseInt(req.params.id);
+        const requestId = parseInt(req.params.id, 10);
         if (isNaN(requestId)) { cleanupUpload(req); return res.status(400).json({ success: false, error: '잘못된 요청 ID입니다.' }); }
         const pool = await poolPromise;
 
@@ -712,10 +713,10 @@ app.post('/api/admin/request/:id/files', authMiddleware, upload.fields([{ name: 
             .input('idCardFile', mssql.NVarChar, firstFile)
             .query('UPDATE Requests SET id_card_file = @idCardFile WHERE id = @syncReqId');
 
-        res.json({ success: true, added: addDepositFiles.length + addIdCardFiles.length });
+        return res.json({ success: true, added: addDepositFiles.length + addIdCardFiles.length });
     } catch (err) {
         cleanupUpload(req);
-        res.status(500).json({ success: false, error: classifyError(err, 'POST /api/admin/request/:id/files') });
+        return res.status(500).json({ success: false, error: classifyError(err, 'POST /api/admin/request/:id/files') });
     }
 });
 
@@ -791,13 +792,13 @@ app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_f
             await transaction.commit();
             return res.json({ success: true, requestCode });
         } catch (txErr) {
-            try { await transaction.rollback(); } catch (_) {}
+            try { await transaction.rollback(); } catch (rbErr) { console.error('Transaction rollback failed:', rbErr); }
             cleanupUpload(req);
             throw txErr;
         }
     } catch (err) {
         cleanupUpload(req);
-        res.status(500).json({ success: false, error: classifyError(err, 'POST /api/admin/request') });
+        return res.status(500).json({ success: false, error: classifyError(err, 'POST /api/admin/request') });
     }
 });
 
@@ -810,7 +811,7 @@ app.put('/api/admin/status', authMiddleware, async (req, res) => {
         if (!ALLOWED_STATUSES.includes(status)) {
             return res.status(400).json({ success: false, error: '유효하지 않은 상태값입니다.' });
         }
-        if (!id || isNaN(Number(id))) {
+        if (!id || isNaN(parseInt(id, 10))) {
             return res.status(400).json({ success: false, error: '유효하지 않은 요청 ID입니다.' });
         }
 
@@ -833,14 +834,14 @@ app.put('/api/admin/status', authMiddleware, async (req, res) => {
         if (currentStatus === status) return res.json({ success: true }); // 상태 변화 없음
 
         await pool.request().input('id', mssql.Int, id).input('status', mssql.NVarChar, status).query('UPDATE Requests SET status = @status WHERE id = @id');
-        res.json({ success: true });
-    } catch (err) { res.status(500).json({ success: false, error: classifyError(err, 'PUT /api/admin/status') }); }
+        return res.json({ success: true });
+    } catch (err) { return res.status(500).json({ success: false, error: classifyError(err, 'PUT /api/admin/status') }); }
 });
 
 // Update Request (Admin) — supports multipart/form-data (file upload) and JSON
 app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 5 }]), fixUploadedFileNames, validateFileMagic, async (req, res) => {
     try {
-        const id = parseInt(req.params.id);
+        const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ success: false, error: '잘못된 요청 ID입니다.' });
         const d = req.body;
         const pool = await poolPromise;
@@ -979,8 +980,8 @@ app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposi
 // NOTE: Express v5에서는 구체적 경로(/:id/file/:fileId)가 덜 구체적 경로(/:id) 앞에 등록되어야 함
 app.delete('/api/admin/request/:id/file/:fileId', authMiddleware, async (req, res) => {
     try {
-        const requestId = parseInt(req.params.id);
-        const fileId = parseInt(req.params.fileId);
+        const requestId = parseInt(req.params.id, 10);
+        const fileId = parseInt(req.params.fileId, 10);
         if (isNaN(requestId) || isNaN(fileId)) return res.status(400).json({ success: false, error: '잘못된 요청입니다.' });
         const pool = await poolPromise;
 
@@ -1012,16 +1013,16 @@ app.delete('/api/admin/request/:id/file/:fileId', authMiddleware, async (req, re
             .input('idCardFile', mssql.NVarChar, firstFile)
             .query('UPDATE Requests SET id_card_file = @idCardFile WHERE id = @syncReqId');
 
-        res.json({ success: true });
+        return res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ success: false, error: classifyError(err, 'DELETE /api/admin/request/:id/file/:fileId') });
+        return res.status(500).json({ success: false, error: classifyError(err, 'DELETE /api/admin/request/:id/file/:fileId') });
     }
 });
 
 // Delete Request (Admin)
 app.delete('/api/admin/request/:id', authMiddleware, async (req, res) => {
     try {
-        const id = parseInt(req.params.id);
+        const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ success: false, error: '잘못된 요청 ID입니다.' });
         const pool = await poolPromise;
 
@@ -1043,9 +1044,9 @@ app.delete('/api/admin/request/:id', authMiddleware, async (req, res) => {
 
         // DB 삭제 (ON DELETE CASCADE가 RequestFiles도 처리)
         await pool.request().input('id3', mssql.Int, id).query('DELETE FROM Requests WHERE id = @id3');
-        res.json({ success: true });
+        return res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ success: false, error: classifyError(err, 'DELETE /api/admin/request/:id') });
+        return res.status(500).json({ success: false, error: classifyError(err, 'DELETE /api/admin/request/:id') });
     }
 });
 
@@ -1088,7 +1089,7 @@ cron.schedule('0 9,17 * * *', async () => {
         `);
 
         if (summary.recordset.length === 0) {
-            sendTelegramNotification('📋 <b>사유서 현황</b>\n\n미완료 사유서가 없습니다.');
+            sendTelegramNotification('📋 <b>사유서 현황</b>\n\n미완료 사유서가 없습니다.').catch(() => {});
             return;
         }
 
@@ -1104,9 +1105,9 @@ cron.schedule('0 9,17 * * *', async () => {
 
         sendTelegramNotification(
             `📋 <b>사유서 현황</b> (미완료 ${total}건)\n\n${statusLine}${listLine}`
-        );
+        ).catch(() => {});
     } catch (err) {
-        console.error('Cron summary failed:', err.message);
+        console.error('Cron summary failed:', err);
     }
 }, { timezone: 'Asia/Seoul' });
 console.log('Cron jobs scheduled: daily 9:00, 17:00 KST');
