@@ -110,24 +110,35 @@ const PORT = process.env.PORT || 3000;
 // When trust proxy is enabled without an actual proxy, req.ip can return incorrect values.
 // app.set('trust proxy', 1);
 
+app.use(express.static(path.join(__dirname, '../public')));
+app.use('/public', express.static(path.join(__dirname, '../public')));
+
 // Security headers with CSP whitelist for CDN resources
+// NOTE: Tailwind Play CDN (cdn.tailwindcss.com) currently requires 'unsafe-inline' and 'unsafe-eval' to work in the browser.
+// For true production security, we recommend using the Tailwind CLI to generate a static CSS file and removing these flags.
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'",
+            scriptSrc: ["'self'", 
+                "'unsafe-inline'", // Required for some CDN scripts to initialize or inject themselves
+                "'unsafe-eval'",   // Required by Tailwind Play CDN
                 "https://cdn.tailwindcss.com",
                 "https://cdn.jsdelivr.net",
                 "https://code.jquery.com",
                 "https://cdn.datatables.net",
-                "https://cdnjs.cloudflare.com"],
-            scriptSrcAttr: ["'unsafe-inline'"],
-            styleSrc: ["'self'", "'unsafe-inline'",
-                "https://cdn.tailwindcss.com",
+                "https://cdnjs.cloudflare.com",
+                "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+            ],
+            scriptSrcAttr: ["'none'"], // Removed 'unsafe-inline' from attributes
+            styleSrc: ["'self'", 
+                "'unsafe-inline'", // Required by Tailwind Play CDN to inject styles
                 "https://cdn.jsdelivr.net",
-                "https://cdn.datatables.net"],
+                "https://cdn.datatables.net",
+                "https://cdnjs.cloudflare.com"
+            ],
             imgSrc: ["'self'", "data:", "blob:"],
-            fontSrc: ["'self'", "https://cdn.jsdelivr.net"],
+            fontSrc: ["'self'"], // Changed to self only as we now self-host Pretendard
             connectSrc: ["'self'", "https://cdn.jsdelivr.net"],
             objectSrc: ["'none'"],
             frameAncestors: ["'self'"],
@@ -148,7 +159,6 @@ app.use(cors({
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use('/public', express.static(path.join(__dirname, '../public')));
 
 // 1. Persistent Session Configuration
 const sessionConfig = {
@@ -1071,6 +1081,24 @@ app.use((err, req, res, next) => {
 
 // Cron: 매일 9시, 17시 미완료 사유서 요약 텔레그램 발송
 cron.schedule('0 9,17 * * *', async () => {
+    // ── 중복 실행 방지용 간단한 파일 락 ──
+    const lockFile = path.join(__dirname, '../cron.lock');
+    const now = new Date();
+    const lockContent = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate() + '-' + now.getHours();
+
+    try {
+        if (fs.existsSync(lockFile)) {
+            const lastRun = fs.readFileSync(lockFile, 'utf8');
+            if (lastRun === lockContent) {
+                // 이미 해당 시간대에 실행됨 (다른 인스턴스 등)
+                return;
+            }
+        }
+        fs.writeFileSync(lockFile, lockContent);
+    } catch (e) {
+        console.error('Cron lock failed:', e.message);
+    }
+
     try {
         const pool = await poolPromise;
         // 상태별 집계 (완료/반려 제외)

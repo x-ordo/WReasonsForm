@@ -1,0 +1,227 @@
+body { font-family: "Pretendard Variable", Pretendard, sans-serif; letter-spacing: -0.02em; }
+
+/* 테이블 컨테이너 */
+.table-container {
+    background: #fff;
+    border-radius: 6px;
+    border: 1px solid #E5E5E5;
+    overflow-x: auto;
+    padding: 0 12px;
+}
+
+/* 데이터테이블 오버라이드 — 콤팩트 */
+table.dataTable { border-collapse: collapse !important; border-spacing: 0 !important; width: 100% !important; margin: 8px 0 !important; }
+table.dataTable thead th {
+    background: #F0F0F0 !important;
+    border-bottom: 1px solid #E5E5E5 !important;
+    border-top: none !important;
+    padding: 14px 16px !important;
+    color: #525252 !important;
+    font-weight: 700 !important;
+    font-size: 15px !important;
+    letter-spacing: -0.01em !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+}
+/* thead 좌우 끝 둥근 모서리 */
+table.dataTable thead th:first-child { border-radius: 8px 0 0 0 !important; }
+table.dataTable thead th:last-child  { border-radius: 0 8px 0 0 !important; }
+table.dataTable tbody td {
+    padding: 14px 16px !important;
+    border-bottom: 1px solid #F5F5F5 !important;
+    font-size: 16px !important;
+    font-weight: 500 !important;
+    color: #404040 !important;
+    vertical-align: middle !important;
+    white-space: nowrap !important;
+}
+
+/* 정렬 가능 열: 화살표와 텍스트 겹침 방지 */
+table.dataTable thead th.sorting,
+table.dataTable thead th.sorting_asc,
+table.dataTable thead th.sorting_desc {
+    padding-right: 28px !important;
+    background-position: right 8px center !important;
+}
+/* 정렬 불가 열: 화살표 제거 */
+table.dataTable thead th.sorting_disabled {
+    background-image: none !important;
+    cursor: default !important;
+}
+
+/* 전체 가운데 정렬 */
+table.dataTable tbody td { text-align: center !important; }
+
+/* hover & 선택 */
+table.dataTable tbody tr:hover td { background: #F5F5F5 !important; cursor: pointer; }
+table.dataTable tbody tr.selected td {
+    background: #F0F0F0 !important;
+    color: #1A1A1A !important;
+    box-shadow: none !important;
+}
+
+/* 체크박스 열 폭 최소화 */
+table.dataTable thead th:first-child,
+table.dataTable tbody td:first-child {
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    padding: 0 !important;
+    text-align: center !important;
+}
+/* 헤더 전체선택 체크박스 */
+#selectAll {
+    width: 15px !important;
+    height: 15px !important;
+    accent-color: #525252;
+    vertical-align: middle;
+}
+/* 본문 행 체크박스 (pseudo-element) */
+table.dataTable tbody td.select-checkbox { position: relative !important; }
+table.dataTable tbody td.select-checkbox:before {
+    content: '' !important;
+    display: block !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    margin: 0 !important;
+    width: 15px !important;
+    height: 15px !important;
+    border: 1.5px solid #D4D4D4 !important;
+    border-radius: 3px !important;
+    background: #fff !important;
+    box-sizing: border-box !important;
+}
+table.dataTable tr.selected td.select-checkbox:before {
+    background: #525252 !important;
+    border-color: #525252 !important;
+}
+table.dataTable tr.selected td.select-checkbox:after {
+    content: '✓' !important;
+    display: block !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    margin: 0 !important;
+    text-shadow: none !important;
+    color: #fff !important;
+    font-weight: 700 !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+}
+
+/* 공통 select — 기본 화살표 제거 + 커스텀 화살표 */
+select {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23737373' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 10px center !important;
+    padding-right: 28px !important;
+}
+
+/* 상태 드롭다운 — 콤팩트 */
+.list-status-select {
+    background-color: #fff;
+    border: 1px solid #E5E5E5;
+    border-radius: 4px;
+    padding: 4px 28px 4px 10px !important;
+    font-size: 14px;
+    font-weight: 700;
+    outline: none;
+    cursor: pointer;
+}
+.list-status-select:focus { border-color: #A3A3A3; }
+.list-status-select option { color: #1A1A1A; background: #fff; }
+
+/* 상태 텍스트 (완료 등 고정 상태) */
+.list-status-text {
+    padding: 4px 10px;
+    font-size: 14px;
+    font-weight: 700;
+    display: inline-block;
+    border: 1px solid transparent; /* 높이 유지를 위해 */
+}
+
+/* 상태 컬러 */
+.status-대기 { color: #E11D48; }    /* Rose 600 - 가장 눈에 띔 */
+.status-접수 { color: #2563EB; }    /* Blue 600 */
+.status-처리중 { color: #7C3AED; }  /* Violet 600 */
+.status-반려 { color: #D97706; }    /* Amber 600 */
+.status-완료 { color: #D4D4D4; }    /* Neutral 300 - 가장 안 띔 */
+
+/* 필터 활성 상태 */
+.filter-active {
+    background-color: #1A1A1A !important;
+    color: #fff !important;
+    border-color: #1A1A1A !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23ffffff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+}
+
+/* DataTables — 기본 검색/건수 숨김 (커스텀 툴바 사용) */
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_length { display: none !important; }
+
+/* 하단: 정보 + 페이지네이션 */
+.dataTables_wrapper .dt-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 4px 8px;
+}
+.dataTables_wrapper .dataTables_info {
+    color: #A3A3A3 !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    padding: 0 !important;
+}
+.dataTables_wrapper .dataTables_paginate { padding: 0 !important; }
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    font-size: 12px !important;
+    padding: 4px 10px !important;
+    border: none !important;
+    border-radius: 4px !important;
+    color: #737373 !important;
+    min-width: auto !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: #1A1A1A !important;
+    color: #fff !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover:not(.current) {
+    background: #F0F0F0 !important;
+    color: #1A1A1A !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled {
+    color: #D4D4D4 !important;
+    cursor: default !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover {
+    background: transparent !important;
+}
+
+/* 인쇄: 모달 내용만 출력 */
+@media print {
+    body * { visibility: hidden !important; }
+    #detailModal, #detailModal * { visibility: visible !important; }
+    #detailModal {
+        position: absolute !important;
+        inset: 0 !important;
+        background: #fff !important;
+        overflow: visible !important;
+        display: block !important;
+        padding: 0 !important;
+    }
+    #detailModal > div {
+        box-shadow: none !important;
+        max-width: 100% !important;
+        min-height: auto !important;
+    }
+    #detailModal .modal-close-btn,
+    #detailModal .modal-footer,
+    .no-print { display: none !important; }
+    #detailModal .px-5.py-5.sm\:px-10.sm\:py-8 { padding: 0 !important; }
+    #detailModal h2 { margin-top: 0 !important; }
+}
