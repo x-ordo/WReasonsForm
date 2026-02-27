@@ -73,7 +73,7 @@ function showAdmin(user) {
         pageLength: 25,
         columnDefs: [
             { orderable: false, className: 'select-checkbox', targets: 0 },
-            { orderable: false, targets: [3, 4, 5, 6, 9, 10, 11] },
+            { orderable: false, targets: [4, 5, 6, 7, 10, 11, 12] },
             { className: 'dt-center', targets: '_all' }
         ],
         select: { style: 'multi', selector: 'td:first-child' },
@@ -124,7 +124,7 @@ function showAdmin(user) {
         if ($(e.target).closest('td').hasClass('select-checkbox') || $(e.target).hasClass('list-status-select')) return;
         const data = table.row(this).data();
         if (!data) return;
-        const id = $(data[11]).data('id');
+        const id = $(data[12]).data('id');
         if (id) openDetail(id);
     });
 
@@ -145,6 +145,7 @@ async function loadData() {
         const prevContractor = $('#filter_contractor').val() || '';
         const prevMerchant = $('#filter_merchant').val() || '';
         const prevStatus = $('#filter_status').val() || '';
+        const prevType = $('#filter_type').val() || '';
         const prevSearch = $('#customSearch').val() || '';
 
         allData = res.data; table.clear();
@@ -170,6 +171,9 @@ async function loadData() {
                 '',
                 fmtDate(i.request_date),
                 `<span class="font-mono font-bold text-[#1A1A1A]">${esc(i.request_code)}</span>`,
+                i.request_type === '오입금'
+                    ? '<span class="inline-block px-2 py-0.5 rounded text-xs font-black bg-orange-100 text-orange-700">오입금</span>'
+                    : '<span class="inline-block px-2 py-0.5 rounded text-xs font-black bg-blue-100 text-blue-700">반환청구</span>',
                 esc(i.contractor_code) || '-',
                 esc(i.merchant_code) || '-',
                 `<span class="font-semibold text-[#1A1A1A]">${esc(i.applicant_name)}</span>`,
@@ -192,6 +196,7 @@ async function loadData() {
         if (prevContractor) { $('#filter_contractor').val(prevContractor).toggleClass('filter-active', true); }
         if (prevMerchant) { $('#filter_merchant').val(prevMerchant).toggleClass('filter-active', true); }
         if (prevStatus) { $('#filter_status').val(prevStatus).toggleClass('filter-active', true); }
+        if (prevType) { $('#filter_type').val(prevType).toggleClass('filter-active', true); }
         if (prevSearch) { $('#customSearch').val(prevSearch); }
 
         syncFilterCache();
@@ -227,14 +232,14 @@ async function updateStatusDirect(id, sel) {
 
 // allData 기반 커스텀 필터 (HTML 마크업 제외, 원본 데이터 검색)
 // 필터 값 캐시 — draw() 전에 한 번만 읽고, 행마다 DOM 접근하지 않음
-let cachedFC = '', cachedFM = '', cachedFS = '', cachedQ = '';
+let cachedFC = '', cachedFM = '', cachedFS = '', cachedFT = '', cachedQ = '';
 
 $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
     const rowData = table.row(dataIndex).data();
     if (!rowData) return true;
 
     // 행의 data-id로 allData에서 원본 찾기
-    const id = $(rowData[11]).data('id');
+    const id = $(rowData[12]).data('id');
     const item = dataById.get(id);
     if (!item) return true;
 
@@ -246,6 +251,9 @@ $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
 
     // 필터: 상태 (원본 status 필드로 정확 매칭)
     if (cachedFS && item.status !== cachedFS) return false;
+
+    // 필터: 유형
+    if (cachedFT && item.request_type !== cachedFT) return false;
 
     // 텍스트 검색 (원본 데이터 필드만 대상)
     if (cachedQ) {
@@ -260,6 +268,7 @@ $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
             item.user_account_name,
             item.status,
             item.details,
+            item.request_type,
             String(item.deposit_amount)
         ].map(v => (v || '').toLowerCase());
         if (!searchFields.some(f => f.includes(cachedQ))) return false;
@@ -273,11 +282,12 @@ function syncFilterCache() {
     cachedFC = $('#filter_contractor').val() || '';
     cachedFM = $('#filter_merchant').val() || '';
     cachedFS = $('#filter_status').val() || '';
+    cachedFT = $('#filter_type').val() || '';
     cachedQ  = ($('#customSearch').val() || '').trim().toLowerCase();
 }
 
 // 필터 변경 시 draw (커스텀 필터가 처리) + 활성 스타일
-$('#filter_contractor, #filter_merchant, #filter_status').on('change', function() {
+$('#filter_contractor, #filter_merchant, #filter_status, #filter_type').on('change', function() {
     $(this).toggleClass('filter-active', !!this.value);
     syncFilterCache();
     table.draw();
@@ -296,7 +306,7 @@ function updateFilterCount() {
 }
 
 function resetFilters() {
-    $('#filter_contractor, #filter_merchant, #filter_status').val('').removeClass('filter-active');
+    $('#filter_contractor, #filter_merchant, #filter_status, #filter_type').val('').removeClass('filter-active');
     $('#customSearch').val('');
     syncFilterCache();
     table.draw();
@@ -385,6 +395,10 @@ async function openDetail(id) {
     const depositFilesHTML = renderFilesSection(depositFiles, '입출금거래내역서');
     const idCardFilesHTML = renderFilesSection(idCardFiles, '신분증');
 
+    const typeBadge = d.request_type === '오입금'
+        ? '<span class="inline-block px-2 py-0.5 rounded text-xs font-black bg-orange-100 text-orange-700 ml-2">오입금</span>'
+        : '<span class="inline-block px-2 py-0.5 rounded text-xs font-black bg-blue-100 text-blue-700 ml-2">반환청구</span>';
+
     $('#modalBody').html(`
         <!-- 문서 제목 -->
         <h2 class="text-center text-base sm:text-lg font-black text-[#1A1A1A] tracking-tight pb-3 mb-4 sm:mb-5 border-b-2 border-[#1A1A1A]">반환 청구 사유서</h2>
@@ -393,7 +407,7 @@ async function openDetail(id) {
         <div class="flex justify-between items-start mb-4 sm:mb-5">
             <div>
                 <p class="text-xs text-[#A3A3A3] mb-0.5">식별코드</p>
-                <p class="font-mono font-bold text-sm sm:text-base text-[#1A1A1A]">${esc(d.request_code)}</p>
+                <p class="font-mono font-bold text-sm sm:text-base text-[#1A1A1A]">${esc(d.request_code)}${typeBadge}</p>
             </div>
             <div class="text-right">
                 <p class="text-xs text-[#A3A3A3] mb-0.5">진행 상태</p>
@@ -494,6 +508,13 @@ function openCreateModal() {
 
     $('#modalBody').html(`
         <h2 class="text-center text-base sm:text-lg font-black text-[#1A1A1A] tracking-tight pb-3 mb-4 sm:mb-5 border-b-2 border-[#1A1A1A]">신규 사유서 등록</h2>
+        <div class="mb-4">
+            <label class="text-xs font-bold text-[#404040] mb-0.5 block">신청 유형</label>
+            <select id="create_request_type" class="${inputClass}">
+                <option value="반환청구">반환청구</option>
+                <option value="오입금">오입금</option>
+            </select>
+        </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
             <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">신청인 <span class="text-red-500">*</span></label><input id="create_applicant_name" class="${inputClass}" maxlength="20" placeholder="홍길동"></div>
             <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">연락처 <span class="text-red-500">*</span></label><input id="create_applicant_phone" class="${inputClass}" maxlength="11" placeholder="01012345678"></div>
@@ -567,6 +588,7 @@ async function saveCreate() {
     fd.append('refund_account', $('#create_refund_account').val());
     fd.append('refund_account_name', $('#create_refund_account_name').val());
     fd.append('details', $('#create_details').val());
+    fd.append('request_type', $('#create_request_type').val());
     fd.append('terms_agreed', $('#create_terms_agreed').is(':checked') ? '1' : '0');
 
     const createDepositInput = document.getElementById('create_deposit_files');
@@ -976,6 +998,7 @@ function exportToExcel() {
             return {
                 '신청일': fmtDate(item.request_date),
                 '식별코드': code,
+                '유형': item.request_type || '반환청구',
                 '계약자 코드': item.contractor_code || '',
                 '가맹점 코드': item.merchant_code || '',
                 '신청인': item.applicant_name,
