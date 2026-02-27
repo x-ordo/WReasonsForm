@@ -97,6 +97,7 @@ const FIELD_LABELS = {
     applicant_phone: '연락처',
     request_date: '신청일자',
     deposit_date: '입금일자',
+    deposit_time: '입금시간',
     deposit_amount: '입금액',
     bank_name: '은행명',
     refund_account: '환불계좌',
@@ -536,7 +537,7 @@ function cleanupUpload(req) {
         const filePath = path.resolve(uploadDir, f.filename);
         if (filePath.startsWith(path.resolve(uploadDir))) {
             fs.unlink(filePath, (err) => {
-                if (err && err.code !== 'ENOENT') console.error('cleanupUpload unlink error:', err.message);
+                if (err?.code !== 'ENOENT') console.error('cleanupUpload unlink error:', err.message);
             });
         }
     }
@@ -594,7 +595,7 @@ app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', 
             cleanupUpload(req);
             return res.status(400).json({ success: false, error: '유효하지 않은 신청 유형입니다.' });
         }
-        const required = ['applicant_name', 'applicant_phone', 'deposit_date', 'deposit_amount', 'bank_name', 'refund_account', 'contractor_type', 'merchant_type'];
+        const required = ['applicant_name', 'applicant_phone', 'deposit_date', 'deposit_time', 'deposit_amount', 'bank_name', 'refund_account', 'contractor_type', 'merchant_type'];
         for (const field of required) {
             if (!d[field] || !d[field].trim()) {
                 cleanupUpload(req);
@@ -611,7 +612,7 @@ app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', 
         if (!['true', '1', 'on'].includes(d.terms_agreed)) { cleanupUpload(req); return res.status(400).json({ success: false, error: '개인정보 활용 동의는 필수입니다.' }); }
         const depositFiles = req.files?.deposit_files ?? [];
         const idCardFiles = req.files?.id_card_files ?? [];
-        if (depositFiles.length === 0) { cleanupUpload(req); return res.status(400).json({ success: false, error: '입출금거래내역서 파일은 최소 1개 필수입니다.' }); }
+        if (depositFiles.length === 0) { cleanupUpload(req); return res.status(400).json({ success: false, error: '입출금내역서 파일은 최소 1개 필수입니다.' }); }
         if (requestType === '반환청구' && idCardFiles.length === 0) { cleanupUpload(req); return res.status(400).json({ success: false, error: '신분증 파일은 최소 1개 필수입니다.' }); }
 
         const pool = await poolPromise;
@@ -621,11 +622,12 @@ app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', 
             const requestCode = await generateRequestCode(transaction, requestType);
 
             const allFiles = [...depositFiles, ...idCardFiles];
-            const firstFile = allFiles.length > 0 ? allFiles[0].filename : null;
+            const firstFile = allFiles[0]?.filename ?? null;
 
             const insertResult = await transaction.request()
                 .input('requestCode', mssql.NVarChar, requestCode)
                 .input('depositDate', mssql.Date, d.deposit_date)
+                .input('depositTime', mssql.Time, d.deposit_time)
                 .input('depositAmount', mssql.Decimal, d.deposit_amount.replace(/\D/g, ''))
                 .input('bankName', mssql.NVarChar, d.bank_name)
                 .input('userAccount', mssql.NVarChar, d.refund_account.replace(/\D/g, ''))
@@ -639,13 +641,13 @@ app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', 
                 .input('termsAgreed', mssql.Bit, ['true', '1', 'on'].includes(d.terms_agreed) ? 1 : 0)
                 .input('termsIp', mssql.NVarChar, (req.ip || '').replace(/^::ffff:/, '') || null)
                 .input('requestType', mssql.NVarChar, requestType)
-                .query(`INSERT INTO Requests (request_code, request_date, deposit_date, deposit_amount, bank_name, user_account, user_account_name, contractor_code, merchant_code, applicant_name, applicant_phone, details, id_card_file, terms_agreed, terms_ip, request_type)
+                .query(`INSERT INTO Requests (request_code, request_date, deposit_date, deposit_time, deposit_amount, bank_name, user_account, user_account_name, contractor_code, merchant_code, applicant_name, applicant_phone, details, id_card_file, terms_agreed, terms_ip, request_type)
                         OUTPUT INSERTED.id
-                        VALUES (@requestCode, CAST(GETDATE() AS DATE), @depositDate, @depositAmount, @bankName, @userAccount, @userAccountName, @contractorCode, @merchantCode, @applicantName, @applicantPhone, @details, @idCardFile, @termsAgreed, @termsIp, @requestType)`);
+                        VALUES (@requestCode, CAST(GETDATE() AS DATE), @depositDate, @depositTime, @depositAmount, @bankName, @userAccount, @userAccountName, @contractorCode, @merchantCode, @applicantName, @applicantPhone, @details, @idCardFile, @termsAgreed, @termsIp, @requestType)`);
 
             const requestId = insertResult.recordset[0].id;
 
-            for (const f of depositFiles) await insertFileRecord(transaction, requestId, f, '입출금거래내역서');
+            for (const f of depositFiles) await insertFileRecord(transaction, requestId, f, '입출금내역서');
             for (const f of idCardFiles) await insertFileRecord(transaction, requestId, f, '신분증');
 
             await transaction.commit();
@@ -780,8 +782,8 @@ app.get('/api/admin/request/:id/docx', authMiddleware, async (req, res) => {
                                 children: [
                                     new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "신청일", bold: true })] })], shading: { fill: "F5F5F5" } }),
                                     new TableCell({ children: [new Paragraph(new Date(data.request_date).toLocaleDateString('ko-KR'))] }),
-                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "입금일", bold: true })] })], shading: { fill: "F5F5F5" } }),
-                                    new TableCell({ children: [new Paragraph(new Date(data.deposit_date).toLocaleDateString('ko-KR'))] }),
+                                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "입금일시", bold: true })] })], shading: { fill: "F5F5F5" } }),
+                                    new TableCell({ children: [new Paragraph(new Date(data.deposit_date).toLocaleDateString('ko-KR') + (data.deposit_time ? ' ' + data.deposit_time : ''))] }),
                                 ],
                             }),
                             new TableRow({
@@ -854,16 +856,17 @@ app.post('/api/admin/request/:id/files', authMiddleware, upload.fields([{ name: 
         const addDepositFiles = req.files?.deposit_files ?? [];
         const addIdCardFiles = req.files?.id_card_files ?? [];
 
-        if ((countMap['입출금거래내역서'] ?? 0) + addDepositFiles.length > 5) {
+        const depositCount = (countMap['입출금내역서'] ?? 0) + (countMap['입출금거래내역서'] ?? 0);
+        if (depositCount + addDepositFiles.length > 5) {
             cleanupUpload(req);
-            return res.status(400).json({ success: false, error: '입출금거래내역서는 최대 5개까지 첨부할 수 있습니다.' });
+            return res.status(400).json({ success: false, error: '입출금내역서는 최대 5개까지 첨부할 수 있습니다.' });
         }
         if ((countMap['신분증'] ?? 0) + addIdCardFiles.length > 5) {
             cleanupUpload(req);
             return res.status(400).json({ success: false, error: '신분증은 최대 5개까지 첨부할 수 있습니다.' });
         }
 
-        for (const f of addDepositFiles) await insertFileRecord(pool, requestId, f, '입출금거래내역서');
+        for (const f of addDepositFiles) await insertFileRecord(pool, requestId, f, '입출금내역서');
         for (const f of addIdCardFiles) await insertFileRecord(pool, requestId, f, '신분증');
 
         // Sync id_card_file
@@ -891,7 +894,7 @@ app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_f
             cleanupUpload(req);
             return res.status(400).json({ success: false, error: '유효하지 않은 신청 유형입니다.' });
         }
-        const required = ['applicant_name', 'applicant_phone', 'request_date', 'deposit_date', 'deposit_amount', 'bank_name', 'refund_account', 'refund_account_name', 'contractor_type', 'merchant_type'];
+        const required = ['applicant_name', 'applicant_phone', 'request_date', 'deposit_date', 'deposit_time', 'deposit_amount', 'bank_name', 'refund_account', 'refund_account_name', 'contractor_type', 'merchant_type'];
         for (const field of required) {
             if (!d[field] || !d[field].trim()) {
                 cleanupUpload(req);
@@ -912,12 +915,13 @@ app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_f
             const adminDepositFiles = req.files?.deposit_files ?? [];
             const adminIdCardFiles = req.files?.id_card_files ?? [];
             const allAdminFiles = [...adminDepositFiles, ...adminIdCardFiles];
-            const firstFile = allAdminFiles.length > 0 ? allAdminFiles[0].filename : null;
+            const firstFile = allAdminFiles[0]?.filename ?? null;
 
             const insertResult = await transaction.request()
                 .input('requestCode', mssql.NVarChar, requestCode)
                 .input('requestDate', mssql.Date, d.request_date)
                 .input('depositDate', mssql.Date, d.deposit_date)
+                .input('depositTime', mssql.Time, d.deposit_time)
                 .input('depositAmount', mssql.Decimal, d.deposit_amount.replace(/\D/g, ''))
                 .input('bankName', mssql.NVarChar, d.bank_name)
                 .input('userAccount', mssql.NVarChar, d.refund_account.replace(/\D/g, ''))
@@ -931,12 +935,12 @@ app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_f
                 .input('termsAgreed', mssql.Bit, ['true', '1', 'on'].includes(d.terms_agreed) ? 1 : 0)
                 .input('termsIp', mssql.NVarChar, null)
                 .input('requestType', mssql.NVarChar, requestType)
-                .query(`INSERT INTO Requests (request_code, request_date, deposit_date, deposit_amount, bank_name, user_account, user_account_name, contractor_code, merchant_code, applicant_name, applicant_phone, details, id_card_file, terms_agreed, terms_ip, request_type)
+                .query(`INSERT INTO Requests (request_code, request_date, deposit_date, deposit_time, deposit_amount, bank_name, user_account, user_account_name, contractor_code, merchant_code, applicant_name, applicant_phone, details, id_card_file, terms_agreed, terms_ip, request_type)
                         OUTPUT INSERTED.id
-                        VALUES (@requestCode, @requestDate, @depositDate, @depositAmount, @bankName, @userAccount, @userAccountName, @contractorCode, @merchantCode, @applicantName, @applicantPhone, @details, @idCardFile, @termsAgreed, @termsIp, @requestType)`);
+                        VALUES (@requestCode, @requestDate, @depositDate, @depositTime, @depositAmount, @bankName, @userAccount, @userAccountName, @contractorCode, @merchantCode, @applicantName, @applicantPhone, @details, @idCardFile, @termsAgreed, @termsIp, @requestType)`);
 
             const requestId = insertResult.recordset[0].id;
-            for (const f of adminDepositFiles) await insertFileRecord(transaction, requestId, f, '입출금거래내역서');
+            for (const f of adminDepositFiles) await insertFileRecord(transaction, requestId, f, '입출금내역서');
             for (const f of adminIdCardFiles) await insertFileRecord(transaction, requestId, f, '신분증');
 
             await transaction.commit();
@@ -1002,6 +1006,7 @@ app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposi
         const allowedFields = {
             request_date: mssql.Date,
             deposit_date: mssql.Date,
+            deposit_time: mssql.Time,
             deposit_amount: mssql.Decimal,
             bank_name: mssql.NVarChar,
             user_account: mssql.NVarChar,
@@ -1063,7 +1068,7 @@ app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposi
                             const fname = fileResult.recordset[0].filename;
                             const resolved = path.resolve(uploadDir, fname);
                             if (resolved.startsWith(path.resolve(uploadDir))) {
-                                fs.unlink(resolved, (err) => { if (err && err.code !== 'ENOENT') console.error('unlink error:', err.message); });
+                                fs.unlink(resolved, (err) => { if (err?.code !== 'ENOENT') console.error('unlink error:', err.message); });
                             }
                             await transaction.request()
                                 .input('delId', mssql.Int, fileId)
@@ -1084,10 +1089,11 @@ app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposi
                 const fileCounts = await transaction.request().input('fReqId', mssql.Int, id)
                     .query("SELECT category, COUNT(*) AS cnt FROM RequestFiles WHERE request_id = @fReqId GROUP BY category");
                 const countMap = Object.fromEntries(fileCounts.recordset.map(r => [r.category, r.cnt]));
-                if ((countMap['입출금거래내역서'] ?? 0) + newDepositFiles.length > 5) {
+                const depositCount = (countMap['입출금내역서'] ?? 0) + (countMap['입출금거래내역서'] ?? 0);
+                if (depositCount + newDepositFiles.length > 5) {
                     await transaction.rollback();
                     cleanupUpload(req);
-                    return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: '입출금거래내역서는 최대 5개까지 첨부할 수 있습니다.' });
+                    return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: '입출금내역서는 최대 5개까지 첨부할 수 있습니다.' });
                 }
                 if ((countMap['신분증'] ?? 0) + newIdCardFiles.length > 5) {
                     await transaction.rollback();
@@ -1095,7 +1101,7 @@ app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposi
                     return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: '신분증은 최대 5개까지 첨부할 수 있습니다.' });
                 }
             }
-            for (const f of newDepositFiles) await insertFileRecord(transaction, id, f, '입출금거래내역서');
+            for (const f of newDepositFiles) await insertFileRecord(transaction, id, f, '입출금내역서');
             for (const f of newIdCardFiles) await insertFileRecord(transaction, id, f, '신분증');
 
             // Sync id_card_file column with first file in RequestFiles
@@ -1148,7 +1154,7 @@ app.delete('/api/admin/request/:id/file/:fileId', authMiddleware, async (req, re
         const fname = fileResult.recordset[0].filename;
         const resolved = path.resolve(uploadDir, fname);
         if (resolved.startsWith(path.resolve(uploadDir))) {
-            fs.unlink(resolved, (err) => { if (err && err.code !== 'ENOENT') console.error('unlink error:', err.message); });
+            fs.unlink(resolved, (err) => { if (err?.code !== 'ENOENT') console.error('unlink error:', err.message); });
         }
 
         // DB 삭제
@@ -1188,7 +1194,7 @@ app.delete('/api/admin/request/:id', authMiddleware, async (req, res) => {
         for (const row of filesResult.recordset) {
             const filePath = path.resolve(uploadDir, row.filename);
             if (filePath.startsWith(path.resolve(uploadDir))) {
-                fs.unlink(filePath, (err) => { if (err && err.code !== 'ENOENT') console.error('unlink error:', err.message); });
+                fs.unlink(filePath, (err) => { if (err?.code !== 'ENOENT') console.error('unlink error:', err.message); });
             }
         }
 

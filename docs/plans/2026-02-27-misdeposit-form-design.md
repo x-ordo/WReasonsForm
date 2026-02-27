@@ -437,12 +437,12 @@ After the closing `</div>` of `id="submitSection"` (line 158) and before `<div i
         />
       </div>
 
-      <!-- 입금내역서 업로드 (신분증 없음) -->
+      <!-- 입출금내역서 업로드 (신분증 없음) -->
       <div class="md:col-span-2 lg:col-span-4 lg:order-none order-[13]">
         <h4
           class="text-sm font-black text-orange-500 mb-3 tracking-widest flex items-center gap-2"
         >
-          <span class="w-1 h-3 bg-orange-500 rounded-full"></span> 입금내역서
+          <span class="w-1 h-3 bg-orange-500 rounded-full"></span> 입출금내역서
         </h4>
 
         <input
@@ -471,7 +471,7 @@ After the closing `</div>` of `id="submitSection"` (line 158) and before `<div i
             ></path>
           </svg>
           <p class="text-gray-700 font-bold text-sm">
-            입금내역서 파일을 이 곳에 끌어다 놓으세요
+            입출금내역서 파일을 이 곳에 끌어다 놓으세요
           </p>
           <p class="text-xs text-gray-400 mt-1">
             최대 5개, 10MB/개, PNG/JPG/PDF
@@ -484,7 +484,7 @@ After the closing `</div>` of `id="submitSection"` (line 158) and before `<div i
           >
             <div class="flex items-center justify-between">
               <p class="text-xs font-black text-orange-400 tracking-widest">
-                입금내역서 (<span id="mdDepositFileCount">0</span>/5)
+                입출금내역서 (<span id="mdDepositFileCount">0</span>/5)
               </p>
               <button
                 type="button"
@@ -612,7 +612,7 @@ window.showMisdepositTab = showMisdepositTab;
 After the existing 신분증 file management section (after line 174), add:
 
 ```js
-// ── 오입금 입금내역서 파일 관리 ──
+// ── 오입금 입출금내역서 파일 관리 ──
 const mdDepositDropZone = document.getElementById("md-deposit-drop-zone");
 const mdDepositFileInput = document.getElementById("md-deposit-file-upload");
 const mdDepositFilePreview = document.getElementById("mdDepositFilePreview");
@@ -632,7 +632,7 @@ if (mdDepositDropZone && mdDepositFileInput) {
         selectedMdDepositFiles,
         mdDepositFileInput,
         5,
-        "입금내역서",
+        "입출금내역서",
       );
       renderMdDepositFileList();
     },
@@ -760,7 +760,7 @@ if (mdForm) {
       errors.push("연락처 확인");
     if (!formData.get("deposit_amount")) errors.push("금액 필수");
     if (selectedMdDepositFiles.length === 0)
-      errors.push("입금내역서 파일 필수");
+      errors.push("입출금내역서 파일 필수");
     if (!formData.get("terms")) errors.push("약관 동의 필수");
 
     if (errors.length > 0) {

@@ -87,7 +87,7 @@ function fmtPhone(p) {
 // ── 관리자 화면 초기화 (DataTables 설정 + 이벤트 바인딩) ──
 function showAdmin(user) {
     $('#loginOverlay').hide(); $('#adminContent').removeClass('hidden');
-    $('#adminInfo').text(user.name + ' 님');
+    $('#adminInfo').text(`${user.name} 님`);
 
     table = $('#requestTable').DataTable({
         dom: '<"dt-top">rt<"dt-bottom"ip>',
@@ -110,14 +110,14 @@ function showAdmin(user) {
     });
 
     // 전체 선택 체크박스
-    $('#selectAll').on('change', function() {
-        if (this.checked) {
+    $('#selectAll').on('change', (e) => {
+        if (e.target.checked) {
             table.rows({ search: 'applied' }).select();
         } else {
             table.rows().deselect();
         }
     });
-    table.on('select deselect', function() {
+    table.on('select deselect', () => {
         const allRows = table.rows({ search: 'applied' }).count();
         const selectedRows = table.rows({ selected: true }).count();
         $('#selectAll').prop('checked', allRows > 0 && allRows === selectedRows);
@@ -132,14 +132,14 @@ function showAdmin(user) {
 
     // 커스텀 검색 (디바운스 + allData 기반)
     let searchTimer = null;
-    $('#customSearch').on('input', function() {
+    $('#customSearch').on('input', () => {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => { syncFilterCache(); table.draw(); updateFilterCount(); }, 200);
     });
 
     // 커스텀 건수
-    $('#customPageLength').on('change', function() {
-        table.page.len(parseInt(this.value)).draw();
+    $('#customPageLength').on('change', (e) => {
+        table.page.len(parseInt(e.target.value)).draw();
     });
 
     $('#requestTable tbody').on('click', 'tr', function (e) {
@@ -201,7 +201,7 @@ async function loadData() {
                 esc(i.merchant_code) || '-',
                 `<span class="font-semibold text-[#1A1A1A]">${esc(i.applicant_name)}</span>`,
                 `<span class="font-mono text-[14px] text-[#737373]">${fmtPhone(i.applicant_phone)}</span>`,
-                fmtDate(i.deposit_date),
+                fmtDate(i.deposit_date) + (i.deposit_time ? ' ' + i.deposit_time : ''),
                 `<span class="font-bold text-[#1A1A1A]">${Number(i.deposit_amount).toLocaleString()}</span>`,
                 `<span class="text-[14px] text-[#737373]">${accountInfo}</span>`,
                 statusDd,
@@ -312,8 +312,8 @@ function syncFilterCache() {
 }
 
 // 필터 변경 시 draw (커스텀 필터가 처리) + 활성 스타일
-$('#filter_contractor, #filter_merchant, #filter_status, #filter_type').on('change', function() {
-    $(this).toggleClass('filter-active', !!this.value);
+$('#filter_contractor, #filter_merchant, #filter_status, #filter_type').on('change', (e) => {
+    $(e.target).toggleClass('filter-active', !!e.target.value);
     syncFilterCache();
     table.draw();
     updateFilterCount();
@@ -362,9 +362,10 @@ async function openDetail(id) {
     // Store files on current detail data for edit mode
     d._files = files;
 
-    // Group files by category
-    const depositFiles = files.filter(f => f.category === '입출금거래내역서');
-    const idCardFiles = files.filter(f => f.category !== '입출금거래내역서'); // 신분증 or legacy (no category)
+    // Group files by category (입출금거래내역서 = legacy name for 입출금내역서)
+    const isDepositFile = f => f.category === '입출금내역서' || f.category === '입출금거래내역서';
+    const depositFiles = files.filter(isDepositFile);
+    const idCardFiles = files.filter(f => !isDepositFile(f));
 
     function renderFilesSection(fileList, category) {
         let html = '';
@@ -398,7 +399,7 @@ async function openDetail(id) {
             html = '<p class="text-[#D4D4D4] text-xs">없음</p>';
         }
         // 파일 추가 입력 (5개 미만일 때만 표시)
-        const fieldName = category === '입출금거래내역서' ? 'deposit_files' : 'id_card_files';
+        const fieldName = (category === '입출금내역서' || category === '입출금거래내역서') ? 'deposit_files' : 'id_card_files';
         const remaining = 5 - fileList.length;
         if (remaining > 0) {
             html += `<div class="no-print mt-2 pt-2 border-t border-[#E5E5E5]">
@@ -417,7 +418,7 @@ async function openDetail(id) {
         return html;
     }
 
-    const depositFilesHTML = renderFilesSection(depositFiles, '입출금거래내역서');
+    const depositFilesHTML = renderFilesSection(depositFiles, '입출금내역서');
     const idCardFilesHTML = renderFilesSection(idCardFiles, '신분증');
 
     const typeBadge = d.request_type === '오입금'
@@ -457,8 +458,8 @@ async function openDetail(id) {
             <tr>
                 <th class="bg-[#F5F5F5] border border-[#D4D4D4] px-3 py-2.5 text-left text-[#404040] font-bold text-sm">신청일</th>
                 <td class="border border-[#D4D4D4] px-3 py-2.5 text-[#1A1A1A] text-sm">${fmtDate(d.request_date)}</td>
-                <th class="bg-[#F5F5F5] border border-[#D4D4D4] px-3 py-2.5 text-left text-[#404040] font-bold text-sm">입금일</th>
-                <td class="border border-[#D4D4D4] px-3 py-2.5 text-[#1A1A1A] text-sm">${fmtDate(d.deposit_date)}</td>
+                <th class="bg-[#F5F5F5] border border-[#D4D4D4] px-3 py-2.5 text-left text-[#404040] font-bold text-sm">입금일시</th>
+                <td class="border border-[#D4D4D4] px-3 py-2.5 text-[#1A1A1A] text-sm">${fmtDate(d.deposit_date)}${d.deposit_time ? ' ' + d.deposit_time : ''}</td>
             </tr>
             <tr>
                 <th class="bg-[#F5F5F5] border border-[#D4D4D4] px-3 py-2.5 text-left text-[#404040] font-bold text-sm">입금액</th>
@@ -481,7 +482,7 @@ async function openDetail(id) {
             </div>
             <div class="grid grid-cols-2">
                 <div class="px-3 py-2 border-b border-r border-[#D4D4D4]"><span class="text-xs font-bold text-[#404040]">신청일</span><p class="text-sm text-[#1A1A1A] mt-0.5">${fmtDate(d.request_date)}</p></div>
-                <div class="px-3 py-2 border-b border-[#D4D4D4]"><span class="text-xs font-bold text-[#404040]">입금일</span><p class="text-sm text-[#1A1A1A] mt-0.5">${fmtDate(d.deposit_date)}</p></div>
+                <div class="px-3 py-2 border-b border-[#D4D4D4]"><span class="text-xs font-bold text-[#404040]">입금일시</span><p class="text-sm text-[#1A1A1A] mt-0.5">${fmtDate(d.deposit_date)}${d.deposit_time ? ' ' + d.deposit_time : ''}</p></div>
             </div>
             <div class="px-3 py-2 border-b border-[#D4D4D4]"><span class="text-xs font-bold text-[#404040]">입금액</span><p class="text-sm font-bold text-[#1A1A1A] mt-0.5">${Number(d.deposit_amount).toLocaleString()}원</p></div>
             <div class="px-3 py-2"><span class="text-xs font-bold text-[#404040]">사용계좌</span><p class="text-sm font-semibold text-[#1A1A1A] mt-0.5">${esc(d.bank_name)} / ${esc(d.user_account)} / ${esc(d.user_account_name)}</p></div>
@@ -493,9 +494,9 @@ async function openDetail(id) {
             <div class="border border-[#D4D4D4] px-3 py-3 sm:px-4 sm:py-3 min-h-[48px] sm:min-h-[60px] text-sm text-[#1A1A1A] leading-relaxed whitespace-pre-wrap">${esc(d.details) || '내용 없음'}</div>
         </div>
 
-        <!-- 입출금거래내역서 -->
+        <!-- 입출금내역서 -->
         <div class="mb-4 sm:mb-5">
-            <p class="text-xs sm:text-sm font-bold text-[#404040] mb-1.5">입출금거래내역서 (${depositFiles.length}개)</p>
+            <p class="text-xs sm:text-sm font-bold text-[#404040] mb-1.5">입출금내역서 (${depositFiles.length}개)</p>
             <div class="border border-[#D4D4D4] p-2 sm:p-3 min-h-[60px] bg-[#FAFAFA]">${depositFilesHTML}</div>
         </div>
 
@@ -547,6 +548,7 @@ function openCreateModal() {
             <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">가맹점 코드 <span class="text-red-500">*</span></label><input id="create_merchant_type" class="${inputClass}" placeholder="가맹점 코드"></div>
             <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">신청일 <span class="text-red-500">*</span></label><input id="create_request_date" type="date" class="${inputClass}" value="${today}"></div>
             <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">입금일 <span class="text-red-500">*</span></label><input id="create_deposit_date" type="date" class="${inputClass}"></div>
+            <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">입금시간 <span class="text-red-500">*</span></label><input id="create_deposit_time" type="time" step="1" class="${inputClass}"></div>
             <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">입금액 <span class="text-red-500">*</span></label><input id="create_deposit_amount" type="number" class="${inputClass}" placeholder="0"></div>
             <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">은행명 <span class="text-red-500">*</span></label><input id="create_bank_name" class="${inputClass}" maxlength="20" placeholder="은행명"></div>
             <div><label class="text-xs font-bold text-[#404040] mb-0.5 block">사용계좌 <span class="text-red-500">*</span></label><input id="create_refund_account" class="${inputClass}" maxlength="16" placeholder="계좌번호 (숫자만)"></div>
@@ -557,7 +559,7 @@ function openCreateModal() {
             <textarea id="create_details" class="${inputClass}" rows="2" maxlength="200" placeholder="상세 사유를 입력하세요"></textarea>
         </div>
         <div class="mb-3">
-            <label class="text-xs font-bold text-[#404040] mb-0.5 block">입출금거래내역서 (최대 5개, PNG/JPG/PDF)</label>
+            <label class="text-xs font-bold text-[#404040] mb-0.5 block">입출금내역서 (최대 5개, PNG/JPG/PDF)</label>
             <input type="file" id="create_deposit_files" accept=".jpg,.jpeg,.png,.pdf" multiple class="text-xs text-[#737373]">
         </div>
         <div class="mb-3" id="create_id_card_section">
@@ -570,8 +572,8 @@ function openCreateModal() {
         </div>
     `);
     // 오입금 선택 시 신분증 섹션 숨기기
-    $('#create_request_type').on('change', function() {
-        $('#create_id_card_section').toggle($(this).val() !== '오입금');
+    $('#create_request_type').on('change', (e) => {
+        $('#create_id_card_section').toggle(e.target.value !== '오입금');
     });
     $('#detailModal').removeClass('hidden');
 }
@@ -588,6 +590,7 @@ async function saveCreate() {
         '#create_merchant_type': '가맹점 코드',
         '#create_request_date': '신청일자',
         '#create_deposit_date': '입금일자',
+        '#create_deposit_time': '입금시간',
         '#create_deposit_amount': '입금액',
         '#create_bank_name': '은행명',
         '#create_refund_account': '환불계좌',
@@ -613,6 +616,7 @@ async function saveCreate() {
     fd.append('merchant_type', $('#create_merchant_type').val());
     fd.append('request_date', $('#create_request_date').val());
     fd.append('deposit_date', $('#create_deposit_date').val());
+    fd.append('deposit_time', $('#create_deposit_time').val());
     fd.append('deposit_amount', $('#create_deposit_amount').val());
     fd.append('bank_name', $('#create_bank_name').val());
     fd.append('refund_account', $('#create_refund_account').val());
@@ -709,7 +713,7 @@ function updateAdminClock() {
     const now = new Date();
     const dateStr = now.toLocaleDateString('ko-KR', { timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit', weekday:'short' });
     const timeStr = now.toLocaleTimeString('ko-KR', { timeZone:'Asia/Seoul', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
-    adminClockEl.textContent = dateStr + ' ' + timeStr;
+    adminClockEl.textContent = `${dateStr} ${timeStr}`;
 }
 updateAdminClock();
 setInterval(updateAdminClock, 1000);
@@ -791,8 +795,9 @@ function toggleEditMode() {
 
     // Multi-file management section — by category
     const files = d._files || [];
-    const editDepositFiles = files.filter(f => f.category === '입출금거래내역서');
-    const editIdCardFiles = files.filter(f => f.category !== '입출금거래내역서');
+    const isDepositCat = f => f.category === '입출금내역서' || f.category === '입출금거래내역서';
+    const editDepositFiles = files.filter(isDepositCat);
+    const editIdCardFiles = files.filter(f => !isDepositCat(f));
 
     function renderEditFileList(fileList) {
         if (fileList.length === 0) return '<p class="text-xs text-[#D4D4D4]">없음</p>';
@@ -812,11 +817,11 @@ function toggleEditMode() {
 
     const fileSection = `
         <div class="mb-3">
-            <label class="text-xs font-bold text-[#404040] mb-1 block">입출금거래내역서 (${editDepositFiles.length}개)</label>
+            <label class="text-xs font-bold text-[#404040] mb-1 block">입출금내역서 (${editDepositFiles.length}개)</label>
             <div class="border border-[#D4D4D4] rounded px-3 py-2 bg-[#FAFAFA]">
                 <div class="mb-2">${renderEditFileList(editDepositFiles)}</div>
                 <div>
-                    <label class="text-xs text-[#A3A3A3] mb-0.5 block">새 입출금거래내역서 추가 (최대 5개, PNG/JPG/PDF)</label>
+                    <label class="text-xs text-[#A3A3A3] mb-0.5 block">새 입출금내역서 추가 (최대 5개, PNG/JPG/PDF)</label>
                     <input type="file" id="edit_deposit_files" accept=".jpg,.jpeg,.png,.pdf" multiple class="text-xs text-[#737373]">
                 </div>
             </div>
@@ -854,6 +859,7 @@ function toggleEditMode() {
             <div><label class="text-xs font-bold text-[#404040] mb-1 block">가맹점 코드</label><input id="edit_merchant_code" class="${inputClass}" value="${esc(d.merchant_code)}"></div>
             <div><label class="text-xs font-bold text-[#404040] mb-1 block">신청일</label><input id="edit_request_date" type="date" class="${inputClass}" value="${toISO(d.request_date)}"></div>
             <div><label class="text-xs font-bold text-[#404040] mb-1 block">입금일</label><input id="edit_deposit_date" type="date" class="${inputClass}" value="${toISO(d.deposit_date)}"></div>
+            <div><label class="text-xs font-bold text-[#404040] mb-1 block">입금시간</label><input id="edit_deposit_time" type="time" step="1" class="${inputClass}" value="${d.deposit_time || ''}"></div>
             <div><label class="text-xs font-bold text-[#404040] mb-1 block">입금액</label><input id="edit_deposit_amount" type="number" class="${inputClass}" value="${d.deposit_amount}"></div>
             <div><label class="text-xs font-bold text-[#404040] mb-1 block">은행명</label><input id="edit_bank_name" class="${inputClass}" value="${esc(d.bank_name)}" maxlength="20"></div>
             <div><label class="text-xs font-bold text-[#404040] mb-1 block">사용계좌</label><input id="edit_user_account" class="${inputClass}" value="${esc(d.user_account)}" maxlength="16"></div>
@@ -888,6 +894,7 @@ async function saveEdit() {
         '#edit_merchant_code': '가맹점 코드',
         '#edit_request_date': '신청일자',
         '#edit_deposit_date': '입금일자',
+        '#edit_deposit_time': '입금시간',
         '#edit_deposit_amount': '입금액',
         '#edit_bank_name': '은행명',
         '#edit_user_account': '사용계좌',
@@ -913,6 +920,7 @@ async function saveEdit() {
     fd.append('merchant_code', $('#edit_merchant_code').val());
     fd.append('request_date', $('#edit_request_date').val());
     fd.append('deposit_date', $('#edit_deposit_date').val());
+    fd.append('deposit_time', $('#edit_deposit_time').val());
     fd.append('deposit_amount', $('#edit_deposit_amount').val());
     fd.append('bank_name', $('#edit_bank_name').val());
     fd.append('user_account', $('#edit_user_account').val());
@@ -922,8 +930,8 @@ async function saveEdit() {
 
     // Collect file IDs to delete
     const deleteIds = [];
-    $('.edit-delete-file-cb:checked').each(function() {
-        deleteIds.push($(this).data('file-id'));
+    $('.edit-delete-file-cb:checked').each((_, el) => {
+        deleteIds.push($(el).data('file-id'));
     });
     if (deleteIds.length > 0) {
         fd.append('_delete_files', JSON.stringify(deleteIds));
@@ -1027,6 +1035,7 @@ function exportToExcel() {
                 '신청인': item.applicant_name,
                 '연락처': fmtPhone(item.applicant_phone),
                 '입금일': fmtDate(item.deposit_date),
+                '입금시간': item.deposit_time || '',
                 '입금액': Number(item.deposit_amount),
                 '은행': item.bank_name,
                 '사용계좌': item.user_account,
@@ -1076,7 +1085,7 @@ async function downloadWord() {
         const filename = `사유서_${d ? d.request_code : currentDetailId}.docx`;
 
         const reader = new FileReader();
-        reader.onload = function() {
+        reader.onload = () => {
             a.href = reader.result;
             a.download = filename;
             document.body.appendChild(a);
@@ -1105,6 +1114,11 @@ function zoomImage(src) {
 // ║  이벤트 위임 (CSP nonce 호환 — inline onclick 대체)       ║
 // ╚═══════════════════════════════════════════════════════════╝
 
+// 모달 바깥 클릭 시 닫기 (오버레이 영역만 반응, 모달 컨텐츠 클릭은 무시)
+document.getElementById('detailModal')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeModal();
+});
+
 // data-action 버튼 클릭 → 함수 매핑
 document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action]');
@@ -1131,13 +1145,13 @@ document.addEventListener('click', (e) => {
     const delBtn = e.target.closest('[data-delete-file]');
     if (delBtn) { deleteFileInline(parseInt(delBtn.dataset.deleteFile), parseInt(delBtn.dataset.fileId)); return; }
     const zoomEl = e.target.closest('[data-zoom-image]');
-    if (zoomEl) { zoomImage(zoomEl.src || zoomEl.querySelector('img')?.src); return; }
+    if (zoomEl) { zoomImage(zoomEl.src ?? zoomEl.querySelector('img')?.src); return; }
 });
 
 // 이미지 Enter 키 접근성 (키보드 사용자 지원)
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         const zoomEl = e.target.closest('[data-zoom-image]');
-        if (zoomEl) zoomImage(zoomEl.src || zoomEl.querySelector('img')?.src);
+        if (zoomEl) zoomImage(zoomEl.src ?? zoomEl.querySelector('img')?.src);
     }
 });

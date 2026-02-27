@@ -9,27 +9,27 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="stylesheet" href="css/fonts.css">
     <link rel="stylesheet" href="css/index.css">
+    <script nonce="%%CSP_NONCE%%" src="js/tailwind-config.js"></script>
     <script nonce="%%CSP_NONCE%%" src="https://cdn.tailwindcss.com"></script>
     <script nonce="%%CSP_NONCE%%" src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js" integrity="sha384-YB/DdIkloKoRpclWB8bNcYXWakt57USgtQPDzvnIDHYU0lasD5eWlXVo1S4ODukY" crossorigin="anonymous"></script>
-    <script nonce="%%CSP_NONCE%%" src="js/tailwind-config.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen">
     <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:bg-white focus:px-4 focus:py-2 focus:text-blue-600 focus:font-bold">본문으로 건너뛰기</a>
 
     <nav class="bg-white shadow-sm border-b sticky top-0 z-50">
         <div class="max-w-4xl mx-auto px-4 py-3 sm:py-4 flex justify-between items-center gap-3">
-            <a href="/public/index.html" class="text-lg sm:text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors no-underline whitespace-nowrap">신청 Form</a>
+            <a href="/public/index.html" class="text-lg sm:text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors no-underline whitespace-nowrap">오입금 정정 신청</a>
             <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                 <span id="liveClock" class="text-sm font-bold text-gray-400 tabular-nums tracking-tight hidden sm:inline"></span>
-                <button onclick="showStatusCheck()" class="text-xs sm:text-sm font-black text-white bg-blue-600 hover:bg-blue-700 px-3 sm:px-4 py-2 rounded-lg transition-colors shadow-sm motion-safe:active:scale-[0.97] whitespace-nowrap">진행 상태 조회</button>
+                <button id="btnStatusCheck" class="text-xs sm:text-sm font-black text-white bg-blue-600 hover:bg-blue-700 px-3 sm:px-4 py-2 rounded-lg transition-colors shadow-sm motion-safe:active:scale-[0.97] whitespace-nowrap">진행 상태 조회</button>
             </div>
         </div>
     </nav>
 
     <div class="max-w-6xl mx-auto px-4 pt-6 sm:pt-8">
-        <div class="flex border-b border-gray-200" id="formTabs">
-            <button onclick="showRefundTab()" id="tabRefund" class="tab-btn tab-active flex-1 sm:flex-none px-4 sm:px-5 py-3.5 sm:py-3 text-sm font-black border-b-2 border-blue-600 text-blue-600 transition-all">반환 청구 사유서</button>
-            <button onclick="showMisdepositTab()" id="tabMisdeposit" class="tab-btn flex-1 sm:flex-none px-4 sm:px-5 py-3.5 sm:py-3 text-sm font-black border-b-2 border-transparent text-gray-400 hover:text-gray-600 transition-all">오입금 포인트 신청서</button>
+        <div class="flex justify-center border-b border-gray-200" id="formTabs">
+            <button id="tabRefund" class="tab-btn tab-active flex-1 sm:flex-none px-6 sm:px-8 py-3.5 sm:py-4 text-sm sm:text-base font-black border-b-2 border-blue-600 text-blue-600 transition-all">반환 청구 사유서</button>
+            <button id="tabMisdeposit" class="tab-btn flex-1 sm:flex-none px-6 sm:px-8 py-3.5 sm:py-4 text-sm sm:text-base font-black border-b-2 border-transparent text-gray-400 hover:text-gray-600 transition-all">오입금 포인트 신청서</button>
         </div>
     </div>
 
@@ -64,8 +64,13 @@
                         <input type="text" name="merchant_type" maxlength="30" placeholder="한글, 영어, 숫자 (최대 30자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
                     </div>
                     <div class="lg:order-none order-[10]">
-                        <label class="block text-sm font-bold text-gray-500 mb-1.5">입금 보낸 일자</label>
-                        <input type="date" name="deposit_date" id="date_deposit" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none font-bold text-base">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">입금 보낸 일시</label>
+                        <input type="hidden" name="deposit_date" id="date_deposit">
+                        <input type="hidden" name="deposit_time" id="time_deposit">
+                        <button type="button" id="btnDateTimePicker" class="w-full border border-gray-200 rounded-lg px-4 py-3.5 font-bold text-base text-gray-400 hover:border-blue-400 hover:bg-blue-50 transition-colors flex items-center justify-between gap-2 bg-white">
+                            <span id="dateTimeDisplay" class="truncate">날짜·시간 선택</span>
+                            <svg class="w-5 h-5 flex-shrink-0 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        </button>
                     </div>
                     <div class="lg:order-none order-[11]">
                         <label class="block text-sm font-bold text-gray-500 mb-1.5">입금액 (원)</label>
@@ -99,7 +104,7 @@
                         <input type="text" name="refund_account" id="input_account" maxlength="16" placeholder="- 없이 숫자만 입력 (최대 16자)" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-black text-base tracking-tighter">
                     </div>
 
-                    <!-- Row 4: 신분증 업로드 / 입출금거래내역서 업로드 -->
+                    <!-- Row 4: 신분증 업로드 / 입출금내역서 업로드 -->
                     <div class="md:col-span-2 lg:order-none order-8">
                         <h4 class="text-sm font-black text-green-600 mb-3 tracking-widest flex items-center gap-2">
                             <span class="w-1 h-3 bg-green-600 rounded-full"></span> 신청인 신분증
@@ -117,35 +122,35 @@
                             <div class="flex flex-col gap-3 p-4 bg-green-50 border border-green-100 rounded-lg">
                                 <div class="flex items-center justify-between">
                                     <p class="text-xs font-black text-green-500 tracking-widest">신청인 신분증 (<span id="idFileCount">0</span>/1)</p>
-                                    <button type="button" onclick="clearAllIdFiles()" class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors">삭제</button>
+                                    <button type="button" id="btnClearIdFiles" class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors">삭제</button>
                                 </div>
                                 <div id="idFileList" class="space-y-2"></div>
-                                <button type="button" onclick="document.getElementById('id-file-upload').click()" class="text-xs font-bold text-green-600 hover:text-green-700 transition-colors mt-1" id="idAddMoreBtn">+ 파일 추가</button>
+                                <button type="button" id="idAddMoreBtn" class="text-xs font-bold text-green-600 hover:text-green-700 transition-colors mt-1">+ 파일 추가</button>
                             </div>
                         </div>
                     </div>
 
                     <div class="md:col-span-2 lg:order-none order-[13]">
                         <h4 class="text-sm font-black text-blue-500 mb-3 tracking-widest flex items-center gap-2">
-                            <span class="w-1 h-3 bg-blue-500 rounded-full"></span> 입출금거래내역서
+                            <span class="w-1 h-3 bg-blue-500 rounded-full"></span> 입출금내역서
                         </h4>
 
-                        <input id="deposit-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple aria-label="입출금거래내역서 파일 선택">
+                        <input id="deposit-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple aria-label="입출금내역서 파일 선택">
 
                         <div id="deposit-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-8 border-2 border-gray-200 border-dashed rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-colors cursor-pointer group">
                             <svg class="h-10 w-10 text-gray-300 group-hover:text-blue-500 transition-colors mb-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-                            <p class="text-gray-700 font-bold text-sm">입출금거래내역서 파일을 이 곳에 끌어다 놓으세요</p>
+                            <p class="text-gray-700 font-bold text-sm">입출금내역서 파일을 이 곳에 끌어다 놓으세요</p>
                             <p class="text-xs text-gray-400 mt-1">최대 5개, 10MB/개, PNG/JPG/PDF</p>
                         </div>
 
                         <div id="depositFilePreview" class="hidden mt-3">
                             <div class="flex flex-col gap-3 p-4 bg-blue-50 border border-blue-100 rounded-lg">
                                 <div class="flex items-center justify-between">
-                                    <p class="text-xs font-black text-blue-400 tracking-widest">입출금거래내역서 (<span id="depositFileCount">0</span>/5)</p>
-                                    <button type="button" onclick="clearAllDepositFiles()" class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors">전체 삭제</button>
+                                    <p class="text-xs font-black text-blue-400 tracking-widest">입출금내역서 (<span id="depositFileCount">0</span>/5)</p>
+                                    <button type="button" id="btnClearDepositFiles" class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors">전체 삭제</button>
                                 </div>
                                 <div id="depositFileList" class="space-y-2"></div>
-                                <button type="button" onclick="document.getElementById('deposit-file-upload').click()" class="text-xs font-bold text-blue-500 hover:text-blue-700 transition-colors mt-1" id="depositAddMoreBtn">+ 파일 추가</button>
+                                <button type="button" id="depositAddMoreBtn" class="text-xs font-bold text-blue-500 hover:text-blue-700 transition-colors mt-1">+ 파일 추가</button>
                             </div>
                         </div>
                     </div>
@@ -158,7 +163,7 @@
                         <input id="terms" name="terms" type="checkbox" required class="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer flex-shrink-0">
                         <label for="terms" class="ml-3 text-sm sm:text-base font-bold text-gray-700 cursor-pointer underline decoration-blue-200 underline-offset-4">
                             개인정보 수집 및 이용 동의 (필수)
-                            <button type="button" onclick="event.stopPropagation(); openTermsModal()" class="text-xs font-black bg-blue-600 text-white px-2.5 py-0.5 rounded ml-2 shadow-sm tracking-tighter">보기</button>
+                            <button type="button" id="btnTermsRefund" class="text-xs font-black bg-blue-600 text-white px-2.5 py-0.5 rounded ml-2 shadow-sm tracking-tighter">보기</button>
                         </label>
                     </div>
 
@@ -197,8 +202,13 @@
                         <input type="text" name="merchant_type" maxlength="30" placeholder="한글, 영어, 숫자 (최대 30자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none font-bold text-base">
                     </div>
                     <div class="lg:order-none order-[10]">
-                        <label class="block text-sm font-bold text-gray-500 mb-1.5">입금 보낸 일자</label>
-                        <input type="date" name="deposit_date" id="md_date_deposit" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none font-bold text-base">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">입금 보낸 일시</label>
+                        <input type="hidden" name="deposit_date" id="md_date_deposit">
+                        <input type="hidden" name="deposit_time" id="md_time_deposit">
+                        <button type="button" id="btnMdDateTimePicker" class="w-full border border-gray-200 rounded-lg px-4 py-3.5 font-bold text-base text-gray-400 hover:border-orange-400 hover:bg-orange-50 transition-colors flex items-center justify-between gap-2 bg-white">
+                            <span id="mdDateTimeDisplay" class="truncate">날짜·시간 선택</span>
+                            <svg class="w-5 h-5 flex-shrink-0 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        </button>
                     </div>
                     <div class="lg:order-none order-[11]">
                         <label class="block text-sm font-bold text-gray-500 mb-1.5">입금액 (원)</label>
@@ -232,28 +242,28 @@
                         <input type="text" name="refund_account" id="md_input_account" maxlength="16" placeholder="- 없이 숫자만 입력 (최대 16자)" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none transition-all font-black text-base tracking-tighter">
                     </div>
 
-                    <!-- 입금내역서 업로드 (신분증 없음) -->
+                    <!-- 입출금내역서 업로드 (신분증 없음) -->
                     <div class="md:col-span-2 lg:col-span-4 lg:order-none order-[13]">
                         <h4 class="text-sm font-black text-orange-500 mb-3 tracking-widest flex items-center gap-2">
-                            <span class="w-1 h-3 bg-orange-500 rounded-full"></span> 입금내역서
+                            <span class="w-1 h-3 bg-orange-500 rounded-full"></span> 입출금내역서
                         </h4>
 
-                        <input id="md-deposit-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple aria-label="입금내역서 파일 선택">
+                        <input id="md-deposit-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple aria-label="입출금내역서 파일 선택">
 
                         <div id="md-deposit-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-8 border-2 border-gray-200 border-dashed rounded-lg hover:bg-orange-50 hover:border-orange-400 transition-colors cursor-pointer group">
                             <svg class="h-10 w-10 text-gray-300 group-hover:text-orange-500 transition-colors mb-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-                            <p class="text-gray-700 font-bold text-sm">입금내역서 파일을 이 곳에 끌어다 놓으세요</p>
+                            <p class="text-gray-700 font-bold text-sm">입출금내역서 파일을 이 곳에 끌어다 놓으세요</p>
                             <p class="text-xs text-gray-400 mt-1">최대 5개, 10MB/개, PNG/JPG/PDF</p>
                         </div>
 
                         <div id="mdDepositFilePreview" class="hidden mt-3">
                             <div class="flex flex-col gap-3 p-4 bg-orange-50 border border-orange-100 rounded-lg">
                                 <div class="flex items-center justify-between">
-                                    <p class="text-xs font-black text-orange-400 tracking-widest">입금내역서 (<span id="mdDepositFileCount">0</span>/5)</p>
-                                    <button type="button" onclick="clearAllMdDepositFiles()" class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors">전체 삭제</button>
+                                    <p class="text-xs font-black text-orange-400 tracking-widest">입출금내역서 (<span id="mdDepositFileCount">0</span>/5)</p>
+                                    <button type="button" id="btnClearMdDepositFiles" class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors">전체 삭제</button>
                                 </div>
                                 <div id="mdDepositFileList" class="space-y-2"></div>
-                                <button type="button" onclick="document.getElementById('md-deposit-file-upload').click()" class="text-xs font-bold text-orange-500 hover:text-orange-700 transition-colors mt-1" id="mdDepositAddMoreBtn">+ 파일 추가</button>
+                                <button type="button" id="mdDepositAddMoreBtn" class="text-xs font-bold text-orange-500 hover:text-orange-700 transition-colors mt-1">+ 파일 추가</button>
                             </div>
                         </div>
                     </div>
@@ -266,7 +276,7 @@
                         <input id="md_terms" name="terms" type="checkbox" required class="w-5 h-5 text-orange-600 border-gray-300 rounded focus:ring-orange-500 cursor-pointer flex-shrink-0">
                         <label for="md_terms" class="ml-3 text-sm sm:text-base font-bold text-gray-700 cursor-pointer underline decoration-orange-200 underline-offset-4">
                             개인정보 수집 및 이용 동의 (필수)
-                            <button type="button" onclick="event.stopPropagation(); openTermsModal()" class="text-xs font-black bg-orange-600 text-white px-2.5 py-0.5 rounded ml-2 shadow-sm tracking-tighter">보기</button>
+                            <button type="button" id="btnTermsMisdeposit" class="text-xs font-black bg-orange-600 text-white px-2.5 py-0.5 rounded ml-2 shadow-sm tracking-tighter">보기</button>
                         </label>
                     </div>
 
@@ -279,7 +289,7 @@
 
         <!-- 상태 조회 -->
         <div id="statusSection" class="hidden bg-white rounded-lg shadow-sm p-6 sm:p-8 border border-gray-200">
-            <button onclick="showSubmit()" class="text-sm font-bold text-gray-500 mb-8 border border-gray-200 px-4 py-2 rounded-md hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+            <button id="btnBackToSubmit" class="text-sm font-bold text-gray-500 mb-8 border border-gray-200 px-4 py-2 rounded-md hover:bg-gray-50 transition-colors flex items-center gap-1.5">
                 <svg class="w-3.5 h-3.5" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>
                 사유서 작성으로 돌아가기
             </button>
@@ -292,7 +302,7 @@
             <div class="space-y-6">
                 <div class="flex flex-col sm:flex-row gap-2">
                     <input type="text" id="status_code" placeholder="식별코드 입력 (예: R-260222-001-ABC)" maxlength="18" autocomplete="off" spellcheck="false" class="flex-1 border border-gray-200 rounded-lg py-3.5 px-4 outline-none focus-visible:border-blue-500 focus-visible:ring-4 focus-visible:ring-blue-50 font-bold text-base sm:text-lg tracking-tight placeholder:text-gray-300 placeholder:font-medium">
-                    <button onclick="checkStatus()" class="bg-[#1A1A1A] text-white px-6 py-3.5 rounded-lg font-bold hover:bg-black transition-colors text-base whitespace-nowrap sm:w-auto">조회</button>
+                    <button id="btnCheckStatus" class="bg-[#1A1A1A] text-white px-6 py-3.5 rounded-lg font-bold hover:bg-black transition-colors text-base whitespace-nowrap sm:w-auto">조회</button>
                 </div>
 
                 <div id="statusResult" class="hidden">

@@ -3,7 +3,7 @@
  *
  * 주요 기능:
  *   - 탭 전환 (반환청구 ↔ 오입금)
- *   - 드래그앤드롭 파일 업로드 (입출금거래내역서, 신분증, 입금내역서)
+ *   - 드래그앤드롭 파일 업로드 (입출금내역서, 신분증, 입출금내역서)
  *   - 입력값 실시간 포맷팅 (전화번호, 금액, 계좌번호)
  *   - 한글 IME 조합 중 기호 삭제 방지 (compositionstart/end)
  *   - 폼 제출 → 식별코드 발급 + 텍스트 파일 다운로드
@@ -69,7 +69,7 @@ function showMisdepositTab() {
 window.showRefundTab = showRefundTab;
 window.showMisdepositTab = showMisdepositTab;
 
-// ── 입출금거래내역서 파일 관리 ──
+// ── 입출금내역서 파일 관리 ──
 const depositDropZone = document.getElementById('deposit-drop-zone');
 const depositFileInput = document.getElementById('deposit-file-upload');
 const depositFilePreview = document.getElementById('depositFilePreview');
@@ -168,11 +168,20 @@ function renderFileListGeneric(filesArray, dropZone, filePreview, fileListEl, fi
                 <p class="text-sm font-bold text-gray-800 truncate">${esc(file.name)}</p>
                 <p class="text-xs font-medium text-gray-400">${(file.size / (1024*1024)).toFixed(2)} MB</p>
             </div>
-            <button type="button" onclick="${removeFn}(${idx})" class="w-8 h-8 rounded-md text-gray-400 hover:text-red-500 flex items-center justify-center transition-all">
+            <button type="button" data-remove-fn="${removeFn}" data-remove-idx="${idx}" class="w-8 h-8 rounded-md text-gray-400 hover:text-red-500 flex items-center justify-center transition-all">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>`;
     }).join('');
+
+    // 삭제 버튼 이벤트 바인딩 (CSP 호환 — inline onclick 대신 event delegation)
+    const removeFnMap = { removeDepositFile, removeIdFile, removeMdDepositFile };
+    fileListEl.querySelectorAll('button[data-remove-fn]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const fn = removeFnMap[btn.dataset.removeFn];
+            fn?.(Number(btn.dataset.removeIdx));
+        });
+    });
 
     filesArray.forEach((file, idx) => {
         if (file.type.startsWith('image/')) {
@@ -186,9 +195,9 @@ function renderFileListGeneric(filesArray, dropZone, filePreview, fileListEl, fi
     });
 }
 
-// ── 입출금거래내역서 ──
+// ── 입출금내역서 ──
 setupDropZone(depositDropZone, depositFileInput, selectedDepositFiles, 5, (files) => {
-    handleFilesGeneric(files, selectedDepositFiles, depositFileInput, 5, '입출금거래내역서');
+    handleFilesGeneric(files, selectedDepositFiles, depositFileInput, 5, '입출금내역서');
     renderDepositFileList();
 });
 function renderDepositFileList() {
@@ -208,7 +217,7 @@ function renderIdFileList() {
 function removeIdFile(idx) { selectedIdFiles.splice(idx, 1); renderIdFileList(); }
 function clearAllIdFiles() { selectedIdFiles = []; idFileInput.value = ''; renderIdFileList(); }
 
-// ── 오입금 입금내역서 파일 관리 ──
+// ── 오입금 입출금내역서 파일 관리 ──
 const mdDepositDropZone = document.getElementById('md-deposit-drop-zone');
 const mdDepositFileInput = document.getElementById('md-deposit-file-upload');
 const mdDepositFilePreview = document.getElementById('mdDepositFilePreview');
@@ -218,7 +227,7 @@ let selectedMdDepositFiles = [];
 
 if (mdDepositDropZone && mdDepositFileInput) {
     setupDropZone(mdDepositDropZone, mdDepositFileInput, selectedMdDepositFiles, 5, (files) => {
-        handleFilesGeneric(files, selectedMdDepositFiles, mdDepositFileInput, 5, '입금내역서');
+        handleFilesGeneric(files, selectedMdDepositFiles, mdDepositFileInput, 5, '입출금내역서');
         renderMdDepositFileList();
     });
 }
@@ -227,15 +236,11 @@ function renderMdDepositFileList() {
 }
 function removeMdDepositFile(idx) { selectedMdDepositFiles.splice(idx, 1); renderMdDepositFileList(); }
 function clearAllMdDepositFiles() { selectedMdDepositFiles = []; mdDepositFileInput.value = ''; renderMdDepositFileList(); }
-window.clearAllMdDepositFiles = clearAllMdDepositFiles;
-window.removeMdDepositFile = removeMdDepositFile;
-window.renderMdDepositFileList = renderMdDepositFileList;
+// clearAllMdDepositFiles, removeMdDepositFile — addEventListener로 바인딩됨
 
 // ── 날짜·시계 초기화 ──
 const kstOpts = { timeZone: 'Asia/Seoul' };
 const todayKST = new Date().toLocaleDateString('sv-SE', kstOpts); // YYYY-MM-DD 형식
-const dateDepositEl = document.getElementById('date_deposit');
-if (dateDepositEl) { dateDepositEl.max = todayKST; dateDepositEl.value = todayKST; }
 
 const clockEl = document.getElementById('liveClock');
 function updateClock() {
@@ -243,10 +248,67 @@ function updateClock() {
     const now = new Date();
     const dateStr = now.toLocaleDateString('ko-KR', { timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit', weekday:'short' });
     const timeStr = now.toLocaleTimeString('ko-KR', { timeZone:'Asia/Seoul', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
-    clockEl.textContent = dateStr + ' ' + timeStr;
+    clockEl.textContent = `${dateStr} ${timeStr}`;
 }
 updateClock();
 setInterval(updateClock, 1000);
+
+// ── 날짜·시간 모달 피커 ──
+function openDateTimePicker({ dateInputId, timeInputId, displayId, accentColor = '#2563eb' }) {
+    const currentDate = document.getElementById(dateInputId).value || todayKST;
+    const currentTime = document.getElementById(timeInputId).value || '';
+
+    Swal.fire({
+        title: '입금 일시 선택',
+        html: `
+            <div style="text-align:left" class="space-y-5">
+                <div>
+                    <label class="block text-sm font-bold text-gray-500 mb-1.5">날짜</label>
+                    <input type="date" id="dtp_date" value="${esc(currentDate)}" max="${todayKST}" class="w-full border border-gray-200 rounded-lg px-4 py-3 font-bold text-base outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-500 mb-1.5">시간</label>
+                    <input type="time" id="dtp_time" step="1" value="${esc(currentTime)}" class="w-full border border-gray-200 rounded-lg px-4 py-3 font-bold text-base outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50">
+                    <p class="text-xs text-gray-400 mt-1.5">🕐 시계 아이콘을 눌러 시간을 선택하세요</p>
+                </div>
+            </div>
+        `,
+        confirmButtonText: '확인',
+        cancelButtonText: '취소',
+        showCancelButton: true,
+        confirmButtonColor: accentColor,
+        width: 380,
+        didOpen: () => {
+            const timeInput = Swal.getPopup().querySelector('#dtp_time');
+            timeInput.addEventListener('click', () => { try { timeInput.showPicker(); } catch {} });
+        },
+        preConfirm: () => {
+            const date = document.getElementById('dtp_date').value;
+            const time = document.getElementById('dtp_time').value;
+            if (!date) { Swal.showValidationMessage('날짜를 선택해 주세요'); return false; }
+            if (!time) { Swal.showValidationMessage('시간을 입력해 주세요'); return false; }
+            // time input step=1 gives HH:MM:SS; step default gives HH:MM — normalize
+            const normalized = time.length === 5 ? `${time}:00` : time;
+            // 미래 시간 차단: 오늘 날짜인 경우 현재 KST 시각 이후 불가
+            const kstNow = new Date().toLocaleString('sv-SE', { timeZone:'Asia/Seoul' });
+            const [nowDate, nowTime] = kstNow.split(' ');
+            if (date === nowDate && normalized > nowTime) {
+                Swal.showValidationMessage('미래 시간은 입력할 수 없습니다');
+                return false;
+            }
+            return { date, time: normalized };
+        }
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        const { date, time } = result.value;
+        document.getElementById(dateInputId).value = date;
+        document.getElementById(timeInputId).value = time;
+        const displayEl = document.getElementById(displayId);
+        displayEl.textContent = `${date} ${time}`;
+        displayEl.classList.remove('text-gray-400');
+        displayEl.classList.add('text-gray-800');
+    });
+}
 
 // ── 공통 입력 포맷터 ──
 function formatPhone(e) {
@@ -273,12 +335,7 @@ document.getElementById('status_code')?.addEventListener('input', e => {
     e.target.value = e.target.value.replace(/[^a-zA-Z0-9\-]/g, '').toUpperCase();
 });
 
-// 오입금 폼 포맷터 + 날짜 초기화
-const mdDateDepositEl = document.getElementById('md_date_deposit');
-if (mdDateDepositEl) {
-    mdDateDepositEl.max = todayKST;
-    mdDateDepositEl.value = todayKST;
-}
+// 오입금 폼 포맷터
 document.getElementById('md_input_phone')?.addEventListener('input', formatPhone);
 document.getElementById('md_input_amount')?.addEventListener('input', formatAmount);
 document.getElementById('md_input_account')?.addEventListener('input', formatAccount);
@@ -307,23 +364,13 @@ function openTermsModal() {
     Swal.fire({
         title: '개인정보 수집 동의',
         html: `<div class="text-left text-sm h-48 overflow-y-auto p-4 border rounded bg-gray-50 leading-relaxed font-bold">
-                1. 수집항목: 성명, 연락처, 계좌정보, ip정보, 신분증 사본<br>2. 이용목적: 사유서 처리 및 본인확인<br>3. 보유기간: 5년 보관 후 파기
+                1. 수집항목: 성명, 연락처, 계좌정보, ip정보, 신분증 사본<br>2. 이용목적: 사유서 처리 및 본인확인<br>3. 보유기간: 5년 보관 후 파기<br><br>해당 은행이 제출 요구시 입력하신 데이터를 해당은행에 제출 할 수 있으며, 이에 동의 합니다.
               </div>`,
         confirmButtonText: '확인', confirmButtonColor: '#2563eb'
     });
 }
 
-// Global functions need to be attached to window if they are called from HTML onclick attributes
-window.openTermsModal = openTermsModal;
-window.showStatusCheck = showStatusCheck;
-window.showSubmit = showSubmit;
-window.checkStatus = checkStatus;
-window.clearAllIdFiles = clearAllIdFiles;
-window.removeIdFile = removeIdFile;
-window.clearAllDepositFiles = clearAllDepositFiles;
-window.removeDepositFile = removeDepositFile;
-window.renderDepositFileList = renderDepositFileList;
-window.renderIdFileList = renderIdFileList;
+// 모든 이벤트는 addEventListener로 바인딩 — window 전역 노출 불필요
 
 // ── 공통 폼 제출 핸들러 ──
 function setupFormSubmit(formId, { validate, attachFiles, accentColor }) {
@@ -387,7 +434,9 @@ function setupFormSubmit(formId, { validate, attachFiles, accentColor }) {
 // ── 반환청구 폼 제출 ──
 setupFormSubmit('requestForm', {
     validate(fd, errors) {
-        if (selectedDepositFiles.length === 0) errors.push('입출금거래내역서 파일 필수');
+        if (!fd.get('deposit_date')) errors.push('입금일자 필수');
+        if (!fd.get('deposit_time')) errors.push('입금시간 필수');
+        if (selectedDepositFiles.length === 0) errors.push('입출금내역서 파일 필수');
         if (selectedIdFiles.length === 0) errors.push('신분증 파일 필수');
         const amountRaw = Number(fd.get('deposit_amount').replace(/,/g, ''));
         if (amountRaw < 2000000) errors.push('반환 청구는 200만원 이상만 신청 가능합니다');
@@ -407,7 +456,8 @@ setupFormSubmit('misdepositForm', {
         if (!fd.get('contractor_type')?.trim()) errors.push('지사코드 필수');
         if (!fd.get('merchant_type')?.trim()) errors.push('가맹점코드 필수');
         if (!fd.get('deposit_date')) errors.push('입금일자 필수');
-        if (selectedMdDepositFiles.length === 0) errors.push('입금내역서 파일 필수');
+        if (!fd.get('deposit_time')) errors.push('입금시간 필수');
+        if (selectedMdDepositFiles.length === 0) errors.push('입출금내역서 파일 필수');
     },
     attachFiles(fd) {
         selectedMdDepositFiles.forEach(f => fd.append('deposit_files', f, f.name));
@@ -483,3 +533,24 @@ async function checkStatus() {
         }
     } catch (err) { Swal.fire('오류', err.message, 'error'); }
 }
+
+// ── 버튼 이벤트 바인딩 (inline onclick 대신 CSP 호환) ──
+document.getElementById('btnStatusCheck')?.addEventListener('click', showStatusCheck);
+document.getElementById('tabRefund')?.addEventListener('click', showRefundTab);
+document.getElementById('tabMisdeposit')?.addEventListener('click', showMisdepositTab);
+document.getElementById('btnClearIdFiles')?.addEventListener('click', clearAllIdFiles);
+document.getElementById('idAddMoreBtn')?.addEventListener('click', () => document.getElementById('id-file-upload')?.click());
+document.getElementById('btnClearDepositFiles')?.addEventListener('click', clearAllDepositFiles);
+document.getElementById('depositAddMoreBtn')?.addEventListener('click', () => document.getElementById('deposit-file-upload')?.click());
+document.getElementById('btnTermsRefund')?.addEventListener('click', (e) => { e.stopPropagation(); openTermsModal(); });
+document.getElementById('btnClearMdDepositFiles')?.addEventListener('click', clearAllMdDepositFiles);
+document.getElementById('mdDepositAddMoreBtn')?.addEventListener('click', () => document.getElementById('md-deposit-file-upload')?.click());
+document.getElementById('btnTermsMisdeposit')?.addEventListener('click', (e) => { e.stopPropagation(); openTermsModal(); });
+document.getElementById('btnBackToSubmit')?.addEventListener('click', showSubmit);
+document.getElementById('btnCheckStatus')?.addEventListener('click', checkStatus);
+document.getElementById('btnDateTimePicker')?.addEventListener('click', () => {
+    openDateTimePicker({ dateInputId: 'date_deposit', timeInputId: 'time_deposit', displayId: 'dateTimeDisplay', accentColor: '#2563eb' });
+});
+document.getElementById('btnMdDateTimePicker')?.addEventListener('click', () => {
+    openDateTimePicker({ dateInputId: 'md_date_deposit', timeInputId: 'md_time_deposit', displayId: 'mdDateTimeDisplay', accentColor: '#ea580c' });
+});
