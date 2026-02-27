@@ -118,12 +118,9 @@ IF COL_LENGTH('RequestFiles', 'category') IS NULL
 
 -- 4-5. request_type 컬럼 추가 (반환청구 / 오입금 구분)
 IF COL_LENGTH('Requests', 'request_type') IS NULL
-BEGIN
     ALTER TABLE Requests ADD request_type NVARCHAR(10) NOT NULL
-        CONSTRAINT DF_Requests_request_type DEFAULT N'반환청구';
-    ALTER TABLE Requests ADD CONSTRAINT CK_Requests_request_type
-        CHECK (request_type IN (N'반환청구', N'오입금'));
-END
+        CONSTRAINT DF_Requests_request_type DEFAULT N'반환청구'
+        CONSTRAINT CK_Requests_request_type CHECK (request_type IN (N'반환청구', N'오입금'));
 
 -- 4-4. 과대 컬럼 축소 (실제 데이터 범위에 맞춤)
 --       UNIQUE/INDEX 제약 조건이 걸린 컬럼은 DROP → ALTER → 재생성 필요
