@@ -9,7 +9,9 @@
     "pm2:stop": "pm2 stop reasonsform",
     "pm2:restart": "pm2 restart reasonsform",
     "pm2:logs": "pm2 logs reasonsform",
-    "pm2:status": "pm2 status"
+    "pm2:status": "pm2 status",
+    "audit": "npm audit --production",
+    "audit:fix": "npm audit fix --production"
   },
   "keywords": [],
   "author": "",

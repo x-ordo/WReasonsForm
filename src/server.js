@@ -1,3 +1,18 @@
+/**
+ * server.js — 사유서 작성 시스템 메인 서버
+ *
+ * Express v5 모놀리스: 라우팅, 미들웨어, 비즈니스 로직이 모두 이 파일에 포함.
+ *
+ * 주요 구성:
+ *   1. 의존성 로드 및 보안 상수
+ *   2. 유틸리티 헬퍼 (에러 분류, 파일 암호화, 로깅, 식별코드 생성)
+ *   3. Express 앱 설정 (보안 헤더, 세션, 정적 파일)
+ *   4. 파일 업로드 파이프라인 (multer → 한글 복원 → 매직바이트 검증 → 암호화)
+ *   5. 인증 API (로그인, 로그아웃, 세션 확인)
+ *   6. 공개 API (폼 제출, 상태 조회)
+ *   7. 관리자 API (CRUD, 파일 관리, DOCX 생성)
+ *   8. 정기 작업 (텔레그램 알림, 고아 파일 정리)
+ */
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -18,12 +33,12 @@ const { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, Table
 require('dotenv').config();
 
 // 타이밍 사이드채널 방어용 더미 해시 (존재하지 않는 유저 요청 시 bcrypt 연산 균등화)
-const DUMMY_HASH = '$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012';
+const DUMMY_HASH = bcrypt.hashSync('__dummy_never_match__', 10);
 
 // ── 에러 분류 헬퍼 ──
 function classifyError(err, context) {
     // MSSQL 에러 번호별 한글 매핑
-    if (err && err.number) {
+    if (err?.number) {
         switch (err.number) {
             case 2627: case 2601: return '중복된 데이터가 존재합니다.';
             case 547: return '데이터 무결성 제약 조건에 위배됩니다.';
@@ -32,11 +47,48 @@ function classifyError(err, context) {
         }
     }
     // MSSQL 연결 에러
-    if (err && (err.code === 'ESOCKET' || err.code === 'ECONNREFUSED' || err.code === 'ETIMEOUT')) {
+    if (err?.code === 'ESOCKET' || err?.code === 'ECONNREFUSED' || err?.code === 'ETIMEOUT') {
         return '데이터베이스 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.';
     }
     console.error(`[${context}]`, err);
     return '서버 처리 중 오류가 발생했습니다. 문제가 계속되면 관리자에게 문의해 주세요.';
+}
+
+// ── 파일 at-rest 암호화 (AES-256-GCM) ──
+if (!process.env.FILE_ENCRYPTION_KEY) {
+    console.error('FATAL: FILE_ENCRYPTION_KEY is not set in .env — generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+    process.exit(1);
+}
+const ENC_KEY_BUF = Buffer.from(process.env.FILE_ENCRYPTION_KEY, 'hex');
+
+function encryptFile(filePath) {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-gcm', ENC_KEY_BUF, iv);
+    const input = fs.readFileSync(filePath);
+    const encrypted = Buffer.concat([cipher.update(input), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    // Format: [16 bytes IV][16 bytes authTag][encrypted data]
+    fs.writeFileSync(filePath, Buffer.concat([iv, authTag, encrypted]));
+}
+
+function decryptFile(filePath) {
+    const data = fs.readFileSync(filePath);
+    const iv = data.subarray(0, 16);
+    const authTag = data.subarray(16, 32);
+    const encrypted = data.subarray(32);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', ENC_KEY_BUF, iv);
+    decipher.setAuthTag(authTag);
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]);
+}
+
+// ── 보안 이벤트 구조화 로깅 ──
+function logSecurity(event, details) {
+    const entry = {
+        timestamp: new Date().toISOString(),
+        event,
+        ...details
+    };
+    console.log(JSON.stringify(entry));
 }
 
 // ── 필드명 한글 매핑 ──
@@ -83,7 +135,14 @@ async function generateRequestCode(poolOrTx, requestType = '반환청구') {
     throw new Error('식별코드 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.');
 }
 
-// Telegram notification helper (fire-and-forget, supports multiple chats/channels and topics)
+// ── 텔레그램 알림 ──
+
+// HTML 이스케이핑: 사용자 입력을 텔레그램 메시지에 안전하게 삽입
+function escTg(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// 여러 채팅방에 텔레그램 메시지 발송 (fire-and-forget, 실패해도 서버 동작에 영향 없음)
 async function sendTelegramNotification(message) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatIds = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -105,42 +164,42 @@ async function sendTelegramNotification(message) {
     }
 }
 
+// ╔═══════════════════════════════════════════════════════════╗
+// ║  Express 앱 초기화 및 보안 설정                           ║
+// ╚═══════════════════════════════════════════════════════════╝
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust proxy: disabled (no reverse proxy in front of this server)
-// When trust proxy is enabled without an actual proxy, req.ip can return incorrect values.
-// app.set('trust proxy', 1);
+// 요청마다 고유 CSP nonce 생성 (helmet보다 먼저 등록해야 함)
+app.use((req, res, next) => {
+    res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+    next();
+});
 
-app.use(express.static(path.join(__dirname, '../public')));
-app.use('/public', express.static(path.join(__dirname, '../public')));
-
-// Security headers with CSP whitelist for CDN resources
-// NOTE: Tailwind Play CDN (cdn.tailwindcss.com) currently requires 'unsafe-inline' and 'unsafe-eval' to work in the browser.
-// For true production security, we recommend using the Tailwind CLI to generate a static CSS file and removing these flags.
+// 보안 헤더 (CSP: nonce 기반 스크립트 허용, CDN 화이트리스트)
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", 
-                "'unsafe-inline'", // Required for some CDN scripts to initialize or inject themselves
-                "'unsafe-eval'",   // Required by Tailwind Play CDN
-                "https://cdn.tailwindcss.com",
-                "https://cdn.jsdelivr.net",
-                "https://code.jquery.com",
-                "https://cdn.datatables.net",
-                "https://cdnjs.cloudflare.com",
-                "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+            scriptSrc: ["'self'",
+                (req, res) => `'nonce-${res.locals.cspNonce}'`,
+                "https://code.jquery.com/jquery-3.7.1.min.js",
+                "https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js",
+                "https://cdn.datatables.net/select/1.7.0/js/dataTables.select.min.js",
+                "https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js",
+                "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+                "https://cdn.tailwindcss.com"
             ],
-            scriptSrcAttr: ["'none'"], // Removed 'unsafe-inline' from attributes
-            styleSrc: ["'self'", 
-                "'unsafe-inline'", // Required by Tailwind Play CDN to inject styles
+            scriptSrcAttr: ["'none'"],
+            styleSrc: ["'self'",
+                "'unsafe-inline'", // Still needed for some library injected styles (e.g. DataTables/SweetAlert)
                 "https://cdn.jsdelivr.net",
                 "https://cdn.datatables.net",
                 "https://cdnjs.cloudflare.com"
             ],
             imgSrc: ["'self'", "data:", "blob:"],
-            fontSrc: ["'self'"], // Changed to self only as we now self-host Pretendard
+            fontSrc: ["'self'"],
             connectSrc: ["'self'", "https://cdn.jsdelivr.net"],
             objectSrc: ["'none'"],
             frameAncestors: ["'self'"],
@@ -153,7 +212,20 @@ app.use(helmet({
     strictTransportSecurity: false,
 }));
 
-// Middleware
+// HTML 페이지 제공: %%CSP_NONCE%% 플레이스홀더를 실제 nonce로 치환 (express.static보다 먼저)
+app.get('/', (req, res) => {
+    const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+    res.send(html.replace(/%%CSP_NONCE%%/g, res.locals.cspNonce));
+});
+app.get('/admin.html', (req, res) => {
+    const html = fs.readFileSync(path.join(__dirname, '../public/admin.html'), 'utf8');
+    res.send(html.replace(/%%CSP_NONCE%%/g, res.locals.cspNonce));
+});
+
+app.use(express.static(path.join(__dirname, '../public')));
+app.use('/public', express.static(path.join(__dirname, '../public')));
+
+// ── 공통 미들웨어 ──
 app.use(cors({
     origin: process.env.CORS_ORIGIN || `http://localhost:${process.env.PORT || 3000}`,
     credentials: true
@@ -162,7 +234,7 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// 1. Persistent Session Configuration
+// ── 세션 설정 (MSSQL 기반 영구 저장) ──
 const sessionConfig = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
@@ -194,29 +266,57 @@ app.use(session({
     }
 }));
 
-// Uploads: 인증된 관리자만 접근 가능 (세션 미들웨어 이후에 등록)
-app.use('/uploads', (req, res, next) => {
-    if (req.session && req.session.user) return next();
-    return res.status(403).json({ error: 'Forbidden' });
-}, express.static(path.join(__dirname, '../uploads')));
-
-// Auth Middleware
-const authMiddleware = (req, res, next) => {
-    if (req.session && req.session.user) {
-        return next();
-    } else {
-        return res.status(401).json({ success: false, error: 'Unauthorized access' });
+// ── 파일 다운로드 (관리자 전용) ──
+// at-rest 암호화된 파일을 복호화하여 제공, 미암호화 레거시 파일도 지원
+app.use('/uploads', (req, res) => {
+    if (!req.session?.user) {
+        return res.status(403).json({ success: false, code: 'FORBIDDEN', error: 'Forbidden' });
     }
+    const filename = path.basename(req.path);
+    const filePath = path.resolve(uploadDir, filename);
+    if (!filePath.startsWith(path.resolve(uploadDir))) {
+        return res.status(403).json({ success: false, code: 'FORBIDDEN', error: 'Forbidden' });
+    }
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ success: false, code: 'NOT_FOUND', error: 'File not found' });
+    }
+    try {
+        const ext = path.extname(filename).toLowerCase();
+        const mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.pdf': 'application/pdf' };
+        res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+        res.setHeader('Content-Disposition', 'attachment');
+        // 암호화된 파일 복호화 시도, 실패 시 미암호화 파일로 fallback
+        let content;
+        try {
+            content = decryptFile(filePath);
+        } catch (_) {
+            content = fs.readFileSync(filePath);
+        }
+        res.send(content);
+    } catch (err) {
+        console.error('File read error:', err.message);
+        return res.status(500).json({ success: false, code: 'SERVER_ERROR', error: '파일을 읽을 수 없습니다.' });
+    }
+});
+
+// ── 인증 미들웨어 (관리자 API 보호) ──
+const authMiddleware = (req, res, next) => {
+    if (req.session?.user) return next();
+    return res.status(401).json({ success: false, error: 'Unauthorized access' });
 };
 
-// Ensure upload directory exists
+// ╔═══════════════════════════════════════════════════════════╗
+// ║  파일 업로드 파이프라인                                    ║
+// ║  multer → 한글 파일명 복원 → 매직바이트 검증 → AES 암호화 ║
+// ╚═══════════════════════════════════════════════════════════╝
+
+// 업로드 디렉토리 보장
 const uploadDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Multer Storage
-// Multer는 Content-Disposition 파일명을 latin1으로 디코딩하므로 한글이 깨짐 → UTF-8 복원
+// 한글 파일명 복원: busboy가 latin1로 디코딩한 것을 UTF-8로 재변환
 function fixOriginalName(file) {
     try {
         // 이미 정상 UTF-8이면 변환하지 않음 (이중 변환 방지)
@@ -259,9 +359,7 @@ const upload = multer({
     }
 });
 
-// Multer 후처리 미들웨어: req.files 내 모든 파일의 originalname을 UTF-8로 재변환
-// (busboy가 latin1으로 디코딩한 파일명을 storage.filename에서 한 번 고쳤지만,
-//  multer v2가 내부적으로 originalname을 다시 세팅하는 경우가 있어 최종 보정)
+// multer v2 후처리: 내부적으로 originalname이 재설정될 수 있어 최종 보정
 function fixUploadedFileNames(req, res, next) {
     if (req.file) fixOriginalName(req.file);
     if (req.files) {
@@ -289,22 +387,39 @@ async function validateFileMagic(req, res, next) {
         try {
             const type = await FileType.fromFile(file.path);
             if (!type || !ALLOWED_MIMES.has(type.mime)) {
-                // 파일 내용이 허용 형식이 아님 → 모든 업로드 파일 삭제
+                logSecurity('FILE_VALIDATION_FAILED', { filename: file.originalname, detectedMime: type ? type.mime : 'unknown' });
                 cleanupUpload(req);
-                return res.status(400).json({ success: false, error: `'${file.originalname}' 파일의 실제 형식이 허용되지 않습니다. JPG, PNG, PDF 파일만 업로드 가능합니다.` });
+                return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: `'${file.originalname}' 파일의 실제 형식이 허용되지 않습니다. JPG, PNG, PDF 파일만 업로드 가능합니다.` });
             }
         } catch (e) {
-            // 파일 읽기 실패 시 거부
+            logSecurity('FILE_VALIDATION_ERROR', { filename: file.originalname, error: e.message });
             cleanupUpload(req);
-            return res.status(400).json({ success: false, error: '업로드된 파일을 검증할 수 없습니다.' });
+            return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: '업로드된 파일을 검증할 수 없습니다.' });
+        }
+    }
+    // 매직바이트 검증 통과 후 at-rest 암호화 적용
+    for (const file of files) {
+        try {
+            encryptFile(file.path);
+        } catch (e) {
+            logSecurity('FILE_ENCRYPTION_ERROR', { filename: file.originalname, error: e.message });
+            cleanupUpload(req);
+            return res.status(500).json({ success: false, code: 'SERVER_ERROR', error: '파일 처리 중 오류가 발생했습니다.' });
         }
     }
     next();
 }
 
-// --- Auth APIs ---
+// ╔═══════════════════════════════════════════════════════════╗
+// ║  인증 API (로그인 · 로그아웃 · 세션 확인)                 ║
+// ╚═══════════════════════════════════════════════════════════╝
 
-// Rate limiting: 로그인 15분당 10회
+// 계정 잠금: brute-force 방어 (메모리 기반, 서버 재시작 시 초기화)
+const loginAttempts = new Map(); // { username: { count, lockedUntil } }
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15분
+
+// ── Rate Limiter 정의 ──
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
@@ -322,11 +437,22 @@ const submitLimiter = rateLimit({
     legacyHeaders: false
 });
 
-// Login
+// ── POST /api/admin/login — 관리자 로그인 ──
+// 계정 잠금 확인 → DB 조회 → bcrypt 비교 → 세션 재생성 → 응답
 app.post('/api/admin/login', loginLimiter, async (req, res) => {
-    const { username, password } = req.body;
+    const username = (req.body.username || '').trim();
+    const password = (req.body.password || '').trim();
     if (!username || !password) {
-        return res.status(400).json({ success: false, error: '아이디와 비밀번호를 입력해 주세요.' });
+        return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: '아이디와 비밀번호를 입력해 주세요.' });
+    }
+
+    const normalizedUser = username.toLowerCase();
+
+    // 계정 잠금 확인
+    const attempt = loginAttempts.get(normalizedUser);
+    if (attempt && attempt.lockedUntil && Date.now() < attempt.lockedUntil) {
+        const remainMin = Math.ceil((attempt.lockedUntil - Date.now()) / 60000);
+        return res.status(429).json({ success: false, code: 'RATE_LIMIT', error: `계정이 잠겨 있습니다. ${remainMin}분 후 다시 시도해 주세요.` });
     }
 
     try {
@@ -340,56 +466,72 @@ app.post('/api/admin/login', loginLimiter, async (req, res) => {
             const isMatch = await bcrypt.compare(password, user.password_hash);
 
             if (isMatch) {
-                req.session.user = { id: user.id, username: user.username, name: user.name };
+                loginAttempts.delete(normalizedUser);
+                logSecurity('LOGIN_SUCCESS', { username: normalizedUser, ip: req.ip });
                 await pool.request().input('id', mssql.Int, user.id).query('UPDATE Users SET last_login = GETDATE() WHERE id = @id');
 
-                return req.session.save((err) => {
-                    if (err) {
-                        console.error('Session Save Error:', err);
-                        return res.status(500).json({ success: false, error: '세션 저장 중 오류가 발생했습니다. 다시 시도해 주세요.' });
+                // 세션 고정 공격 방지: 인증 성공 시 세션 ID 재생성
+                return req.session.regenerate((regenErr) => {
+                    if (regenErr) {
+                        console.error('Session Regenerate Error:', regenErr);
+                        return res.status(500).json({ success: false, code: 'SERVER_ERROR', error: '세션 생성 중 오류가 발생했습니다.' });
                     }
-                    return res.json({ success: true, user: req.session.user });
+                    req.session.user = { id: user.id, username: user.username, name: user.name };
+                    return req.session.save((err) => {
+                        if (err) {
+                            console.error('Session Save Error:', err);
+                            return res.status(500).json({ success: false, code: 'SERVER_ERROR', error: '세션 저장 중 오류가 발생했습니다.' });
+                        }
+                        return res.json({ success: true, user: req.session.user });
+                    });
                 });
             }
         } else {
             await bcrypt.compare(password, DUMMY_HASH);
         }
-        return res.status(401).json({ success: false, error: '아이디 또는 비밀번호가 올바르지 않습니다.' });
+
+        // 실패 기록
+        const prev = loginAttempts.get(normalizedUser) || { count: 0, lockedUntil: null };
+        prev.count += 1;
+        if (prev.count >= MAX_LOGIN_ATTEMPTS) {
+            prev.lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
+            logSecurity('ACCOUNT_LOCKED', { username: normalizedUser, ip: req.ip, duration: '15m' });
+            sendTelegramNotification(`🚨 <b>계정 잠금</b>\n계정: <code>${escTg(normalizedUser)}</code>\nIP: <code>${escTg(req.ip)}</code>\n사유: 로그인 ${MAX_LOGIN_ATTEMPTS}회 실패`).catch(() => {});
+        }
+        loginAttempts.set(normalizedUser, prev);
+        logSecurity('LOGIN_FAILED', { username: normalizedUser, ip: req.ip, attempts: prev.count });
+
+        return res.status(401).json({ success: false, code: 'AUTH_REQUIRED', error: '아이디 또는 비밀번호가 올바르지 않습니다.' });
     } catch (err) {
-        return res.status(500).json({ success: false, error: classifyError(err, 'POST /api/admin/login') });
+        const classified = classifyError(err, 'POST /api/admin/login');
+        return res.status(500).json({ success: false, code: 'SERVER_ERROR', error: classified });
     }
 });
 
-// Check Session
+// ── GET /api/admin/me — 현재 세션 확인 ──
 app.get('/api/admin/me', (req, res) => {
     if (req.session.user) return res.json({ success: true, user: req.session.user });
     else return res.status(401).json({ success: false });
 });
 
-// Logout
+// ── POST /api/admin/logout — 로그아웃 (세션 파기 + 쿠키 삭제) ──
 app.post('/api/admin/logout', (req, res) => {
     req.session.destroy((err) => {
         if (err) console.error('Session destroy error:', err);
-        res.clearCookie('reasonsform.sid');
+        res.clearCookie('reasonsform.sid', { httpOnly: true, sameSite: 'lax', path: '/' });
         return res.json({ success: true });
     });
 });
 
-// Helper: 검증 실패 시 multer가 이미 저장한 파일 정리 (fields/array/single 대응)
+// ── 업로드 헬퍼 함수들 ──
+
+// 검증 실패·에러 시 multer가 디스크에 저장한 파일을 정리
 function cleanupUpload(req) {
-    let files = [];
-    if (req.file) {
-        files = [req.file];
-    } else if (req.files) {
-        if (Array.isArray(req.files)) {
-            files = req.files;
-        } else {
-            // upload.fields() 형식: { fieldName: [File, ...] }
-            for (const fieldFiles of Object.values(req.files)) {
-                files.push(...fieldFiles);
-            }
-        }
-    }
+    const files = req.file
+        ? [req.file]
+        : req.files
+            ? (Array.isArray(req.files) ? req.files : Object.values(req.files).flat())
+            : [];
     for (const f of files) {
         const filePath = path.resolve(uploadDir, f.filename);
         if (filePath.startsWith(path.resolve(uploadDir))) {
@@ -400,21 +542,50 @@ function cleanupUpload(req) {
     }
 }
 
-// Helper: upload.fields() 결과에서 모든 파일을 flat 배열로 반환
+// upload.fields() 결과를 flat 배열로 변환
 function getAllUploadedFiles(req) {
     if (!req.files) return [];
-    if (Array.isArray(req.files)) return req.files;
-    const files = [];
-    for (const fieldFiles of Object.values(req.files)) {
-        files.push(...fieldFiles);
-    }
-    return files;
+    return Array.isArray(req.files) ? req.files : Object.values(req.files).flat();
 }
 
-// --- Data APIs ---
+// RequestFiles 테이블에 파일 레코드 삽입 (7곳에서 공통 사용)
+async function insertFileRecord(poolOrTx, requestId, file, category) {
+    const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+    await poolOrTx.request()
+        .input('requestId', mssql.Int, requestId)
+        .input('filename', mssql.NVarChar, file.filename)
+        .input('originalName', mssql.NVarChar, file.originalname)
+        .input('fileType', mssql.NVarChar, ext)
+        .input('category', mssql.NVarChar, category)
+        .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
+}
 
-// Submit Request (Public)
-app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 5 }]), fixUploadedFileNames, validateFileMagic, async (req, res) => {
+// ── 업로드 디렉토리 총 사이즈 체크 (쿼터: 5GB) ──
+const UPLOAD_QUOTA_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
+function getUploadDirSize() {
+    try {
+        const files = fs.readdirSync(uploadDir);
+        return files.reduce((total, file) => {
+            try { return total + fs.statSync(path.join(uploadDir, file)).size; } catch { return total; }
+        }, 0);
+    } catch { return 0; }
+}
+
+const checkUploadQuota = (req, res, next) => {
+    if (getUploadDirSize() > UPLOAD_QUOTA_BYTES) {
+        cleanupUpload(req);
+        return res.status(507).json({ success: false, code: 'SERVER_ERROR', error: '서버 저장 공간이 부족합니다. 관리자에게 문의해 주세요.' });
+    }
+    next();
+};
+
+// ╔═══════════════════════════════════════════════════════════╗
+// ║  공개 API (인증 불필요)                                    ║
+// ╚═══════════════════════════════════════════════════════════╝
+
+// ── POST /api/request — 공개 폼 제출 (반환청구 / 오입금) ──
+// 트랜잭션: 식별코드 생성 → Requests INSERT → RequestFiles INSERT → 텔레그램 알림
+app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 5 }]), fixUploadedFileNames, validateFileMagic, checkUploadQuota, async (req, res) => {
     try {
         // 서버 입력값 검증
         const d = req.body;
@@ -438,8 +609,8 @@ app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', 
             if (amountNum < 2000000) { cleanupUpload(req); return res.status(400).json({ success: false, error: '반환 청구는 200만원 이상만 신청 가능합니다.' }); }
         }
         if (!['true', '1', 'on'].includes(d.terms_agreed)) { cleanupUpload(req); return res.status(400).json({ success: false, error: '개인정보 활용 동의는 필수입니다.' }); }
-        const depositFiles = (req.files && req.files.deposit_files) || [];
-        const idCardFiles = (req.files && req.files.id_card_files) || [];
+        const depositFiles = req.files?.deposit_files ?? [];
+        const idCardFiles = req.files?.id_card_files ?? [];
         if (depositFiles.length === 0) { cleanupUpload(req); return res.status(400).json({ success: false, error: '입출금거래내역서 파일은 최소 1개 필수입니다.' }); }
         if (requestType === '반환청구' && idCardFiles.length === 0) { cleanupUpload(req); return res.status(400).json({ success: false, error: '신분증 파일은 최소 1개 필수입니다.' }); }
 
@@ -474,26 +645,8 @@ app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', 
 
             const requestId = insertResult.recordset[0].id;
 
-            for (const f of depositFiles) {
-                const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-                await transaction.request()
-                    .input('requestId', mssql.Int, requestId)
-                    .input('filename', mssql.NVarChar, f.filename)
-                    .input('originalName', mssql.NVarChar, f.originalname)
-                    .input('fileType', mssql.NVarChar, ext)
-                    .input('category', mssql.NVarChar, '입출금거래내역서')
-                    .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
-            }
-            for (const f of idCardFiles) {
-                const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-                await transaction.request()
-                    .input('requestId', mssql.Int, requestId)
-                    .input('filename', mssql.NVarChar, f.filename)
-                    .input('originalName', mssql.NVarChar, f.originalname)
-                    .input('fileType', mssql.NVarChar, ext)
-                    .input('category', mssql.NVarChar, '신분증')
-                    .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
-            }
+            for (const f of depositFiles) await insertFileRecord(transaction, requestId, f, '입출금거래내역서');
+            for (const f of idCardFiles) await insertFileRecord(transaction, requestId, f, '신분증');
 
             await transaction.commit();
 
@@ -518,7 +671,7 @@ app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', 
     }
 });
 
-// Rate limiting: 상태조회 15분당 30회
+// ── GET /api/status/:code — 공개 상태 조회 (이름 마스킹) ──
 const statusLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 30,
@@ -527,8 +680,7 @@ const statusLimiter = rateLimit({
     legacyHeaders: false
 });
 
-// Status Check (Public)
-const REQUEST_CODE_RE = /^([RM]-)?\d{6}-\d{3}-[A-Z0-9]{3}$/;
+const REQUEST_CODE_RE = /^([RM]-)?\d{6}-\d{3}-[A-Z0-9]{3}$/;  // R-YYMMDD-NNN-XXX 또는 M-YYMMDD-NNN-XXX
 app.get('/api/status/:code', statusLimiter, async (req, res) => {
     if (!REQUEST_CODE_RE.test(req.params.code)) {
         return res.status(400).json({ success: false, error: '식별코드 형식이 올바르지 않습니다. (예: R-260222-001-ABC)' });
@@ -546,7 +698,11 @@ app.get('/api/status/:code', statusLimiter, async (req, res) => {
     } catch (err) { return res.status(500).json({ success: false, error: classifyError(err, 'GET /api/status') }); }
 });
 
-// Admin APIs (Protected)
+// ╔═══════════════════════════════════════════════════════════╗
+// ║  관리자 API (authMiddleware 보호)                         ║
+// ╚═══════════════════════════════════════════════════════════╝
+
+// ── GET /api/admin/requests — 전체 목록 조회 (파일 수 포함) ──
 app.get('/api/admin/requests', authMiddleware, async (req, res) => {
     try {
         const pool = await poolPromise;
@@ -561,6 +717,7 @@ app.get('/api/admin/requests', authMiddleware, async (req, res) => {
     } catch (err) { return res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/requests') }); }
 });
 
+// ── GET /api/admin/request/:id — 단건 상세 조회 (첨부파일 포함) ──
 app.get('/api/admin/request/:id', authMiddleware, async (req, res) => {
     try {
         const pool = await poolPromise;
@@ -574,6 +731,7 @@ app.get('/api/admin/request/:id', authMiddleware, async (req, res) => {
     } catch (err) { return res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/request/:id') }); }
 });
 
+// ── GET /api/admin/request/:id/docx — Word 문서 생성·다운로드 ──
 app.get('/api/admin/request/:id/docx', authMiddleware, async (req, res) => {
     try {
         const pool = await poolPromise;
@@ -676,9 +834,9 @@ app.get('/api/admin/request/:id/docx', authMiddleware, async (req, res) => {
     } catch (err) { return res.status(500).json({ success: false, error: classifyError(err, 'GET /api/admin/request/:id/docx') }); }
 });
 
-// Add Files to Request (Admin) — 상세보기에서 카테고리별 파일 추가
-// NOTE: Express v5에서는 구체적 경로(/:id/files)가 덜 구체적 경로(/) 앞에 등록되어야 함
-app.post('/api/admin/request/:id/files', authMiddleware, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 5 }]), fixUploadedFileNames, validateFileMagic, async (req, res) => {
+// ── POST /api/admin/request/:id/files — 기존 요청에 파일 추가 ──
+// Express v5: 구체적 경로(/:id/files)를 덜 구체적 경로(/:id) 앞에 등록
+app.post('/api/admin/request/:id/files', authMiddleware, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 5 }]), fixUploadedFileNames, validateFileMagic, checkUploadQuota, async (req, res) => {
     try {
         const requestId = parseInt(req.params.id, 10);
         if (isNaN(requestId)) { cleanupUpload(req); return res.status(400).json({ success: false, error: '잘못된 요청 ID입니다.' }); }
@@ -691,46 +849,27 @@ app.post('/api/admin/request/:id/files', authMiddleware, upload.fields([{ name: 
         // 카테고리별 현재 파일 수 확인
         const counts = await pool.request().input('reqId', mssql.Int, requestId)
             .query("SELECT category, COUNT(*) AS cnt FROM RequestFiles WHERE request_id = @reqId GROUP BY category");
-        const countMap = {};
-        counts.recordset.forEach(r => { countMap[r.category] = r.cnt; });
+        const countMap = Object.fromEntries(counts.recordset.map(r => [r.category, r.cnt]));
 
-        const addDepositFiles = (req.files && req.files.deposit_files) || [];
-        const addIdCardFiles = (req.files && req.files.id_card_files) || [];
+        const addDepositFiles = req.files?.deposit_files ?? [];
+        const addIdCardFiles = req.files?.id_card_files ?? [];
 
-        if ((countMap['입출금거래내역서'] || 0) + addDepositFiles.length > 5) {
+        if ((countMap['입출금거래내역서'] ?? 0) + addDepositFiles.length > 5) {
             cleanupUpload(req);
             return res.status(400).json({ success: false, error: '입출금거래내역서는 최대 5개까지 첨부할 수 있습니다.' });
         }
-        if ((countMap['신분증'] || 0) + addIdCardFiles.length > 5) {
+        if ((countMap['신분증'] ?? 0) + addIdCardFiles.length > 5) {
             cleanupUpload(req);
             return res.status(400).json({ success: false, error: '신분증은 최대 5개까지 첨부할 수 있습니다.' });
         }
 
-        for (const f of addDepositFiles) {
-            const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-            await pool.request()
-                .input('requestId', mssql.Int, requestId)
-                .input('filename', mssql.NVarChar, f.filename)
-                .input('originalName', mssql.NVarChar, f.originalname)
-                .input('fileType', mssql.NVarChar, ext)
-                .input('category', mssql.NVarChar, '입출금거래내역서')
-                .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
-        }
-        for (const f of addIdCardFiles) {
-            const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-            await pool.request()
-                .input('requestId', mssql.Int, requestId)
-                .input('filename', mssql.NVarChar, f.filename)
-                .input('originalName', mssql.NVarChar, f.originalname)
-                .input('fileType', mssql.NVarChar, ext)
-                .input('category', mssql.NVarChar, '신분증')
-                .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
-        }
+        for (const f of addDepositFiles) await insertFileRecord(pool, requestId, f, '입출금거래내역서');
+        for (const f of addIdCardFiles) await insertFileRecord(pool, requestId, f, '신분증');
 
         // Sync id_card_file
         const remaining = await pool.request().input('syncId', mssql.Int, requestId)
             .query('SELECT TOP 1 filename FROM RequestFiles WHERE request_id = @syncId ORDER BY uploaded_at');
-        const firstFile = remaining.recordset.length > 0 ? remaining.recordset[0].filename : null;
+        const firstFile = remaining.recordset[0]?.filename ?? null;
         await pool.request()
             .input('syncReqId', mssql.Int, requestId)
             .input('idCardFile', mssql.NVarChar, firstFile)
@@ -743,8 +882,8 @@ app.post('/api/admin/request/:id/files', authMiddleware, upload.fields([{ name: 
     }
 });
 
-// Create Request (Admin)
-app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 5 }]), fixUploadedFileNames, validateFileMagic, async (req, res) => {
+// ── POST /api/admin/request — 관리자 신규 등록 ──
+app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 5 }]), fixUploadedFileNames, validateFileMagic, checkUploadQuota, async (req, res) => {
     try {
         const d = req.body;
         const requestType = d.request_type || '반환청구';
@@ -770,8 +909,8 @@ app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_f
         try {
             const requestCode = await generateRequestCode(transaction, requestType);
 
-            const adminDepositFiles = (req.files && req.files.deposit_files) || [];
-            const adminIdCardFiles = (req.files && req.files.id_card_files) || [];
+            const adminDepositFiles = req.files?.deposit_files ?? [];
+            const adminIdCardFiles = req.files?.id_card_files ?? [];
             const allAdminFiles = [...adminDepositFiles, ...adminIdCardFiles];
             const firstFile = allAdminFiles.length > 0 ? allAdminFiles[0].filename : null;
 
@@ -797,26 +936,8 @@ app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_f
                         VALUES (@requestCode, @requestDate, @depositDate, @depositAmount, @bankName, @userAccount, @userAccountName, @contractorCode, @merchantCode, @applicantName, @applicantPhone, @details, @idCardFile, @termsAgreed, @termsIp, @requestType)`);
 
             const requestId = insertResult.recordset[0].id;
-            for (const f of adminDepositFiles) {
-                const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-                await transaction.request()
-                    .input('requestId', mssql.Int, requestId)
-                    .input('filename', mssql.NVarChar, f.filename)
-                    .input('originalName', mssql.NVarChar, f.originalname)
-                    .input('fileType', mssql.NVarChar, ext)
-                    .input('category', mssql.NVarChar, '입출금거래내역서')
-                    .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
-            }
-            for (const f of adminIdCardFiles) {
-                const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-                await transaction.request()
-                    .input('requestId', mssql.Int, requestId)
-                    .input('filename', mssql.NVarChar, f.filename)
-                    .input('originalName', mssql.NVarChar, f.originalname)
-                    .input('fileType', mssql.NVarChar, ext)
-                    .input('category', mssql.NVarChar, '신분증')
-                    .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
-            }
+            for (const f of adminDepositFiles) await insertFileRecord(transaction, requestId, f, '입출금거래내역서');
+            for (const f of adminIdCardFiles) await insertFileRecord(transaction, requestId, f, '신분증');
 
             await transaction.commit();
             return res.json({ success: true, requestCode });
@@ -831,6 +952,8 @@ app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_f
     }
 });
 
+// ── PUT /api/admin/status — 상태 변경 (워크플로 검증) ──
+// 대기 ↔ 접수 ↔ 처리중 ↔ 반려 자유 이동, '완료'는 최종 상태 (변경 불가)
 app.put('/api/admin/status', authMiddleware, async (req, res) => {
     try {
         const { id, status } = req.body;
@@ -867,8 +990,9 @@ app.put('/api/admin/status', authMiddleware, async (req, res) => {
     } catch (err) { return res.status(500).json({ success: false, error: classifyError(err, 'PUT /api/admin/status') }); }
 });
 
-// Update Request (Admin) — supports multipart/form-data (file upload) and JSON
-app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 5 }]), fixUploadedFileNames, validateFileMagic, async (req, res) => {
+// ── PUT /api/admin/request/:id — 요청 수정 (필드 + 파일 삭제/추가) ──
+// multipart/form-data 지원: 텍스트 필드 수정 + 파일 삭제(_delete_files) + 새 파일 업로드
+app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposit_files', maxCount: 5 }, { name: 'id_card_files', maxCount: 5 }]), fixUploadedFileNames, validateFileMagic, checkUploadQuota, async (req, res) => {
     try {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ success: false, error: '잘못된 요청 ID입니다.' });
@@ -905,108 +1029,105 @@ app.put('/api/admin/request/:id', authMiddleware, upload.fields([{ name: 'deposi
         }
 
         const setClauses = [];
-        const request = pool.request().input('id', mssql.Int, id);
+        const transaction = new mssql.Transaction(pool);
+        await transaction.begin();
 
-        for (const [field, type] of Object.entries(allowedFields)) {
-            if (d[field] !== undefined) {
-                let value = d[field];
-                if (field === 'deposit_amount') value = String(value).replace(/\D/g, '');
-                if (field === 'applicant_phone') value = String(value).replace(/\D/g, '');
-                request.input(field, type, value);
-                setClauses.push(`${field} = @${field}`);
-            }
-        }
+        try {
+            const request = transaction.request().input('id', mssql.Int, id);
 
-        // Handle individual file deletions (_delete_files = JSON array of file IDs)
-        if (d._delete_files) {
-            try {
-                const deleteIds = JSON.parse(d._delete_files);
-                if (!Array.isArray(deleteIds) || deleteIds.length > 20) {
-                    return res.status(400).json({ success: false, error: '삭제할 파일 정보가 올바르지 않습니다.' });
+            for (const [field, type] of Object.entries(allowedFields)) {
+                if (d[field] !== undefined) {
+                    let value = d[field];
+                    if (field === 'deposit_amount') value = String(value).replace(/\D/g, '');
+                    if (field === 'applicant_phone') value = String(value).replace(/\D/g, '');
+                    request.input(field, type, value);
+                    setClauses.push(`${field} = @${field}`);
                 }
-                for (const fileId of deleteIds) {
-                    if (!Number.isInteger(fileId) || fileId < 1) continue;
-                    const fileResult = await pool.request()
-                        .input('fileId', mssql.Int, fileId)
-                        .input('reqId', mssql.Int, id)
-                        .query('SELECT filename FROM RequestFiles WHERE id = @fileId AND request_id = @reqId');
-                    if (fileResult.recordset.length > 0) {
-                        const fname = fileResult.recordset[0].filename;
-                        const resolved = path.resolve(uploadDir, fname);
-                        if (resolved.startsWith(path.resolve(uploadDir))) {
-                            fs.unlink(resolved, (err) => { if (err && err.code !== 'ENOENT') console.error('unlink error:', err.message); });
-                        }
-                        await pool.request()
-                            .input('delId', mssql.Int, fileId)
-                            .query('DELETE FROM RequestFiles WHERE id = @delId');
+            }
+
+            // Handle individual file deletions (_delete_files = JSON array of file IDs)
+            if (d._delete_files) {
+                try {
+                    const deleteIds = JSON.parse(d._delete_files);
+                    if (!Array.isArray(deleteIds) || deleteIds.length > 20) {
+                        await transaction.rollback();
+                        return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: '삭제할 파일 정보가 올바르지 않습니다.' });
                     }
+                    for (const fileId of deleteIds) {
+                        if (!Number.isInteger(fileId) || fileId < 1) continue;
+                        const fileResult = await transaction.request()
+                            .input('fileId', mssql.Int, fileId)
+                            .input('reqId', mssql.Int, id)
+                            .query('SELECT filename FROM RequestFiles WHERE id = @fileId AND request_id = @reqId');
+                        if (fileResult.recordset.length > 0) {
+                            const fname = fileResult.recordset[0].filename;
+                            const resolved = path.resolve(uploadDir, fname);
+                            if (resolved.startsWith(path.resolve(uploadDir))) {
+                                fs.unlink(resolved, (err) => { if (err && err.code !== 'ENOENT') console.error('unlink error:', err.message); });
+                            }
+                            await transaction.request()
+                                .input('delId', mssql.Int, fileId)
+                                .query('DELETE FROM RequestFiles WHERE id = @delId');
+                        }
+                    }
+                } catch (e) {
+                    try { await transaction.rollback(); } catch (rbErr) { /* already rolled back */ }
+                    cleanupUpload(req);
+                    return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: '삭제할 파일 정보가 올바르지 않습니다.' });
                 }
-            } catch (e) {
-                cleanupUpload(req);
-                return res.status(400).json({ success: false, error: '삭제할 파일 정보가 올바르지 않습니다.' });
             }
-        }
 
-        // Handle new file uploads with category (카테고리별 5개 제한 검증)
-        const newDepositFiles = (req.files && req.files.deposit_files) || [];
-        const newIdCardFiles = (req.files && req.files.id_card_files) || [];
-        if (newDepositFiles.length > 0 || newIdCardFiles.length > 0) {
-            const fileCounts = await pool.request().input('fReqId', mssql.Int, id)
-                .query("SELECT category, COUNT(*) AS cnt FROM RequestFiles WHERE request_id = @fReqId GROUP BY category");
-            const countMap = {};
-            fileCounts.recordset.forEach(r => { countMap[r.category] = r.cnt; });
-            if ((countMap['입출금거래내역서'] || 0) + newDepositFiles.length > 5) {
-                cleanupUpload(req);
-                return res.status(400).json({ success: false, error: '입출금거래내역서는 최대 5개까지 첨부할 수 있습니다.' });
+            // Handle new file uploads with category (카테고리별 5개 제한 검증)
+            const newDepositFiles = req.files?.deposit_files ?? [];
+            const newIdCardFiles = req.files?.id_card_files ?? [];
+            if (newDepositFiles.length > 0 || newIdCardFiles.length > 0) {
+                const fileCounts = await transaction.request().input('fReqId', mssql.Int, id)
+                    .query("SELECT category, COUNT(*) AS cnt FROM RequestFiles WHERE request_id = @fReqId GROUP BY category");
+                const countMap = Object.fromEntries(fileCounts.recordset.map(r => [r.category, r.cnt]));
+                if ((countMap['입출금거래내역서'] ?? 0) + newDepositFiles.length > 5) {
+                    await transaction.rollback();
+                    cleanupUpload(req);
+                    return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: '입출금거래내역서는 최대 5개까지 첨부할 수 있습니다.' });
+                }
+                if ((countMap['신분증'] ?? 0) + newIdCardFiles.length > 5) {
+                    await transaction.rollback();
+                    cleanupUpload(req);
+                    return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: '신분증은 최대 5개까지 첨부할 수 있습니다.' });
+                }
             }
-            if ((countMap['신분증'] || 0) + newIdCardFiles.length > 5) {
-                cleanupUpload(req);
-                return res.status(400).json({ success: false, error: '신분증은 최대 5개까지 첨부할 수 있습니다.' });
+            for (const f of newDepositFiles) await insertFileRecord(transaction, id, f, '입출금거래내역서');
+            for (const f of newIdCardFiles) await insertFileRecord(transaction, id, f, '신분증');
+
+            // Sync id_card_file column with first file in RequestFiles
+            const remainingFiles = await transaction.request()
+                .input('syncId', mssql.Int, id)
+                .query('SELECT TOP 1 filename FROM RequestFiles WHERE request_id = @syncId ORDER BY uploaded_at');
+            const firstFileName = remainingFiles.recordset[0]?.filename ?? null;
+            request.input('id_card_file', mssql.NVarChar, firstFileName);
+            setClauses.push('id_card_file = @id_card_file');
+
+            if (setClauses.length === 0) {
+                await transaction.rollback();
+                return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', error: '수정할 항목이 없습니다.' });
             }
-        }
-        for (const f of newDepositFiles) {
-            const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-            await pool.request()
-                .input('requestId', mssql.Int, id)
-                .input('filename', mssql.NVarChar, f.filename)
-                .input('originalName', mssql.NVarChar, f.originalname)
-                .input('fileType', mssql.NVarChar, ext)
-                .input('category', mssql.NVarChar, '입출금거래내역서')
-                .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
-        }
-        for (const f of newIdCardFiles) {
-            const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
-            await pool.request()
-                .input('requestId', mssql.Int, id)
-                .input('filename', mssql.NVarChar, f.filename)
-                .input('originalName', mssql.NVarChar, f.originalname)
-                .input('fileType', mssql.NVarChar, ext)
-                .input('category', mssql.NVarChar, '신분증')
-                .query('INSERT INTO RequestFiles (request_id, filename, original_name, file_type, category) VALUES (@requestId, @filename, @originalName, @fileType, @category)');
-        }
 
-        // Sync id_card_file column with first file in RequestFiles
-        const remainingFiles = await pool.request()
-            .input('syncId', mssql.Int, id)
-            .query('SELECT TOP 1 filename FROM RequestFiles WHERE request_id = @syncId ORDER BY uploaded_at');
-        const firstFileName = remainingFiles.recordset.length > 0 ? remainingFiles.recordset[0].filename : null;
-        request.input('id_card_file', mssql.NVarChar, firstFileName);
-        setClauses.push('id_card_file = @id_card_file');
-
-        if (setClauses.length === 0) {
-            return res.status(400).json({ success: false, error: '수정할 항목이 없습니다.' });
+            await request.query(`UPDATE Requests SET ${setClauses.join(', ')} WHERE id = @id`);
+            await transaction.commit();
+            return res.json({ success: true });
+        } catch (txErr) {
+            try { await transaction.rollback(); } catch (rbErr) { /* already rolled back */ }
+            cleanupUpload(req);
+            throw txErr;
         }
-
-        await request.query(`UPDATE Requests SET ${setClauses.join(', ')} WHERE id = @id`);
-        return res.json({ success: true });
     } catch (err) {
         cleanupUpload(req);
-        return res.status(500).json({ success: false, error: classifyError(err, 'PUT /api/admin/request/:id') });
+        const classified = classifyError(err, 'PUT /api/admin/request/:id');
+        return res.status(500).json({ success: false, code: 'SERVER_ERROR', error: classified });
     }
 });
 
-// Delete Single File (Admin) — 상세보기에서 개별 파일 삭제
-// NOTE: Express v5에서는 구체적 경로(/:id/file/:fileId)가 덜 구체적 경로(/:id) 앞에 등록되어야 함
+// ── DELETE /api/admin/request/:id/file/:fileId — 개별 파일 삭제 ──
+// Express v5: 구체적 경로 먼저 등록
 app.delete('/api/admin/request/:id/file/:fileId', authMiddleware, async (req, res) => {
     try {
         const requestId = parseInt(req.params.id, 10);
@@ -1034,12 +1155,12 @@ app.delete('/api/admin/request/:id/file/:fileId', authMiddleware, async (req, re
         await pool.request().input('delId', mssql.Int, fileId).query('DELETE FROM RequestFiles WHERE id = @delId');
 
         // Sync id_card_file
-        const remaining = await pool.request().input('syncId', mssql.Int, requestId)
+        const remaining2 = await pool.request().input('syncId', mssql.Int, requestId)
             .query('SELECT TOP 1 filename FROM RequestFiles WHERE request_id = @syncId ORDER BY uploaded_at');
-        const firstFile = remaining.recordset.length > 0 ? remaining.recordset[0].filename : null;
+        const syncFile = remaining2.recordset[0]?.filename ?? null;
         await pool.request()
             .input('syncReqId', mssql.Int, requestId)
-            .input('idCardFile', mssql.NVarChar, firstFile)
+            .input('idCardFile', mssql.NVarChar, syncFile)
             .query('UPDATE Requests SET id_card_file = @idCardFile WHERE id = @syncReqId');
 
         return res.json({ success: true });
@@ -1048,7 +1169,7 @@ app.delete('/api/admin/request/:id/file/:fileId', authMiddleware, async (req, re
     }
 });
 
-// Delete Request (Admin)
+// ── DELETE /api/admin/request/:id — 요청 삭제 (디스크 파일 + DB CASCADE) ──
 app.delete('/api/admin/request/:id', authMiddleware, async (req, res) => {
     try {
         const id = parseInt(req.params.id, 10);
@@ -1081,7 +1202,7 @@ app.delete('/api/admin/request/:id', authMiddleware, async (req, res) => {
 
 app.get('/', (req, res) => res.redirect('/public/index.html'));
 
-// Multer / global error handler — JSON 응답 보장
+// ── 전역 에러 핸들러 (Multer 에러 포함, 항상 JSON 응답) ──
 app.use((err, req, res, next) => {
     if (err instanceof multer.MulterError) {
         const messages = {
@@ -1091,14 +1212,18 @@ app.use((err, req, res, next) => {
         };
         return res.status(400).json({ success: false, error: messages[err.code] || '파일 업로드 중 오류가 발생했습니다.' });
     }
-    if (err && err.code === 'INVALID_FILE_TYPE') {
+    if (err?.code === 'INVALID_FILE_TYPE') {
         return res.status(400).json({ success: false, error: err.message });
     }
     console.error('Unhandled Error:', err);
     return res.status(500).json({ success: false, error: '서버 내부 오류가 발생했습니다.' });
 });
 
-// Cron: 매일 9시, 17시 미완료 사유서 요약 텔레그램 발송
+// ╔═══════════════════════════════════════════════════════════╗
+// ║  정기 작업 (Cron)                                         ║
+// ╚═══════════════════════════════════════════════════════════╝
+
+// 매일 09:00, 17:00 KST — 미완료 사유서 요약 텔레그램 발송
 cron.schedule('0 9,17 * * *', async () => {
     // ── 중복 실행 방지용 간단한 파일 락 ──
     const lockFile = path.join(__dirname, '../cron.lock');
@@ -1157,11 +1282,37 @@ cron.schedule('0 9,17 * * *', async () => {
         console.error('Cron summary failed:', err);
     }
 }, { timezone: 'Asia/Seoul' });
-console.log('Cron jobs scheduled: daily 9:00, 17:00 KST');
+// 매일 03:00 KST — DB에 없는 고아 파일 정리
+cron.schedule('0 3 * * *', async () => {
+    try {
+        const pool = await poolPromise;
+        const dbFiles = await pool.request().query('SELECT filename FROM RequestFiles');
+        const dbSet = new Set(dbFiles.recordset.map(r => r.filename));
+        const diskFiles = fs.readdirSync(uploadDir);
+        let cleaned = 0;
+        for (const file of diskFiles) {
+            if (!dbSet.has(file)) {
+                const filePath = path.resolve(uploadDir, file);
+                if (filePath.startsWith(path.resolve(uploadDir))) {
+                    fs.unlinkSync(filePath);
+                    cleaned++;
+                }
+            }
+        }
+        if (cleaned > 0) {
+            logSecurity('ORPHAN_CLEANUP', { filesRemoved: cleaned });
+        }
+    } catch (err) {
+        console.error('Orphan cleanup failed:', err.message);
+    }
+}, { timezone: 'Asia/Seoul' });
 
+console.log('Cron jobs scheduled: daily 3:00 (orphan cleanup), 9:00, 17:00 KST');
+
+// ── 서버 시작 및 DoS 방어 타임아웃 설정 ──
 const server = app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
 
-// DoS 방어: Slowloris, 헤더 플러딩 방지
+// Slowloris, 헤더 플러딩 등 저속 공격 방어
 server.headersTimeout = 15000;
 server.requestTimeout = 30000;
 server.timeout = 60000;

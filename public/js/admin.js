@@ -1,5 +1,24 @@
-let table; let allData = []; let dataById = new Map(); let currentDetailId = null; let isEditMode = false; let modalMode = 'view'; // 'view' | 'edit' | 'create'
-let isSaving = false;
+/**
+ * admin.js — 관리자 대시보드
+ *
+ * 주요 기능:
+ *   - 로그인/로그아웃 (세션 기반)
+ *   - DataTables 기반 목록 표시 (커스텀 필터, 정렬, 페이징)
+ *   - 상세보기 모달 (파일 미리보기, 인라인 파일 추가/삭제)
+ *   - 수정 모드 (필드 수정 + 파일 관리)
+ *   - 신규 등록 모달
+ *   - 상태 변경 (드롭다운 즉시 변경)
+ *   - 일괄 삭제, 엑셀 내보내기, Word 다운로드, 인쇄
+ */
+
+// ── 전역 상태 ──
+let table;                           // DataTables 인스턴스
+let allData = [];                    // 전체 요청 데이터 (서버 응답 원본)
+let dataById = new Map();            // id → 데이터 빠른 조회용 맵
+let currentDetailId = null;          // 현재 열린 상세보기의 요청 ID
+let isEditMode = false;              // 수정 모드 여부
+let modalMode = 'view';              // 모달 모드: 'view' | 'edit' | 'create'
+let isSaving = false;                // 저장 중 중복 방지 플래그
 const statuses = ['대기', '접수', '처리중', '완료', '반려'];
 
 // ── safeFetch 헬퍼 (401 세션 만료 자동 처리) ──
@@ -42,6 +61,7 @@ function esc(str) {
     return d.innerHTML;
 }
 
+// ── 초기화: 세션 확인 후 관리자 화면 표시 ──
 $(document).ready(async () => {
     try {
         const resp = await fetch('/api/admin/me', { credentials: 'include' });
@@ -52,6 +72,7 @@ $(document).ready(async () => {
     } catch (e) { /* 미인증 상태 — 로그인 화면 유지 */ }
 });
 
+// ── 포맷 헬퍼 ──
 const _dateFmt = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' });
 function fmtDate(d) {
     if (!d) return '-';
@@ -63,6 +84,7 @@ function fmtPhone(p) {
     return p.replace(/(\d{3})(\d{3,4})(\d{4})/, '$1-$2-$3');
 }
 
+// ── 관리자 화면 초기화 (DataTables 설정 + 이벤트 바인딩) ──
 function showAdmin(user) {
     $('#loginOverlay').hide(); $('#adminContent').removeClass('hidden');
     $('#adminInfo').text(user.name + ' 님');
@@ -131,6 +153,7 @@ function showAdmin(user) {
     loadData();
 }
 
+// ── 데이터 로드: 서버에서 전체 목록 가져와 테이블 갱신 ──
 async function loadData() {
     let res;
     try {
@@ -162,7 +185,7 @@ async function loadData() {
                 statusDd = `<span class="list-status-text status-완료">완료</span>`;
             } else {
                 let statusOptions = statuses.map(s => `<option value="${s}" ${i.status === s ? 'selected' : ''}>${s}</option>`).join('');
-                statusDd = `<select onchange="updateStatusDirect(${i.id}, this)" class="list-status-select status-${i.status}">${statusOptions}</select>`;
+                statusDd = `<select data-status-change="${i.id}" class="list-status-select status-${i.status}">${statusOptions}</select>`;
             }
 
             const accountInfo = [i.bank_name, i.user_account, i.user_account_name].filter(Boolean).map(esc).join(' ');
@@ -205,6 +228,7 @@ async function loadData() {
     }
 }
 
+// ── 목록에서 상태 드롭다운 즉시 변경 ──
 async function updateStatusDirect(id, sel) {
     const newStatus = sel.value;
     const prevStatus = dataById.get(id)?.status || sel.dataset.prev || '대기';
@@ -230,8 +254,9 @@ async function updateStatusDirect(id, sel) {
     }
 }
 
-// allData 기반 커스텀 필터 (HTML 마크업 제외, 원본 데이터 검색)
-// 필터 값 캐시 — draw() 전에 한 번만 읽고, 행마다 DOM 접근하지 않음
+// ── DataTables 커스텀 필터 ──
+// allData 원본을 기반으로 필터링 (HTML 마크업 무시)
+// 캐시: draw() 전에 필터 값을 한 번만 읽어 행마다 DOM 접근 방지
 let cachedFC = '', cachedFM = '', cachedFS = '', cachedFT = '', cachedQ = '';
 
 $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
@@ -313,7 +338,7 @@ function resetFilters() {
     updateFilterCount();
 }
 
-// 상세 모달
+// ── 상세보기 모달 (파일 미리보기 + 인라인 파일 추가/삭제) ──
 async function openDetail(id) {
     const d = dataById.get(id);
     if (!d) return;
@@ -329,7 +354,7 @@ async function openDetail(id) {
     let filesFetchError = false;
     try {
         const { ok, data: detailRes } = await safeFetch(`/api/admin/request/${id}`);
-        if (ok && detailRes.success && detailRes.data && detailRes.data.files) {
+        if (ok && detailRes.success && detailRes.data?.files) {
             files = detailRes.data.files;
         }
     } catch (e) { filesFetchError = true; }
@@ -347,7 +372,7 @@ async function openDetail(id) {
             html = fileList.map(f => {
                 const src = `/uploads/${encodeURIComponent(f.filename)}`;
                 const isPdf = f.file_type === 'pdf';
-                const deleteBtn = `<button onclick="deleteFileInline(${id}, ${f.id})" class="no-print text-xs font-bold text-red-400 hover:text-red-600 border border-red-200 rounded px-2 py-0.5 transition-colors flex-shrink-0" title="삭제">&#10005;</button>`;
+                const deleteBtn = `<button data-delete-file="${id}" data-file-id="${f.id}" class="no-print text-xs font-bold text-red-400 hover:text-red-600 border border-red-200 rounded px-2 py-0.5 transition-colors flex-shrink-0" title="삭제">&#10005;</button>`;
                 if (isPdf) {
                     return `<div class="border border-[#E5E5E5] rounded-md overflow-hidden mb-2">
                         <iframe src="${src}" class="w-full" style="height:300px;" frameborder="0"></iframe>
@@ -361,7 +386,7 @@ async function openDetail(id) {
                     </div>`;
                 } else {
                     return `<div class="mb-2">
-                        <img src="${src}" alt="${esc(f.original_name)}" class="max-w-full rounded cursor-pointer" onclick="zoomImage(this.src)" onkeydown="if(event.key==='Enter')zoomImage(this.src)" tabindex="0" role="button" style="max-height: 240px;" loading="lazy">
+                        <img src="${src}" alt="${esc(f.original_name)}" class="max-w-full rounded cursor-pointer" data-zoom-image tabindex="0" role="button" style="max-height: 240px;" loading="lazy">
                         <div class="flex items-center justify-between mt-1">
                             <p class="text-xs text-[#A3A3A3] truncate">${esc(f.original_name)}</p>
                             ${deleteBtn}
@@ -380,7 +405,7 @@ async function openDetail(id) {
                 <label class="inline-flex items-center gap-1.5 cursor-pointer text-xs font-bold text-blue-500 hover:text-blue-700 transition-colors">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
                     파일 추가
-                    <input type="file" accept=".jpg,.jpeg,.png,.pdf" multiple class="hidden" onchange="addFilesInline(${id}, '${fieldName}', this, ${remaining})">
+                    <input type="file" accept=".jpg,.jpeg,.png,.pdf" multiple class="hidden" data-add-files="${id}" data-field="${fieldName}" data-remaining="${remaining}">
                 </label>
                 <span class="text-[10px] text-[#A3A3A3] ml-2">${remaining}개 추가 가능 · PNG/JPG/PDF</span>
             </div>`;
@@ -494,7 +519,7 @@ async function openDetail(id) {
 
 function closeModal() { $('#detailModal').addClass('hidden'); isEditMode = false; modalMode = 'view'; }
 
-// 신규 등록 모달
+// ── 신규 등록 모달 ──
 function openCreateModal() {
     currentDetailId = null;
     isEditMode = false;
@@ -551,6 +576,7 @@ function openCreateModal() {
     $('#detailModal').removeClass('hidden');
 }
 
+// ── 신규 등록 저장 ──
 async function saveCreate() {
     if (isSaving) return;
 
@@ -596,16 +622,12 @@ async function saveCreate() {
     fd.append('terms_agreed', $('#create_terms_agreed').is(':checked') ? '1' : '0');
 
     const createDepositInput = document.getElementById('create_deposit_files');
-    if (createDepositInput && createDepositInput.files.length > 0) {
-        for (const f of createDepositInput.files) {
-            fd.append('deposit_files', f);
-        }
+    if (createDepositInput?.files.length > 0) {
+        for (const f of createDepositInput.files) fd.append('deposit_files', f);
     }
     const createIdInput = document.getElementById('create_id_card_files');
-    if (createIdInput && createIdInput.files.length > 0) {
-        for (const f of createIdInput.files) {
-            fd.append('id_card_files', f);
-        }
+    if (createIdInput?.files.length > 0) {
+        for (const f of createIdInput.files) fd.append('id_card_files', f);
     }
 
     try {
@@ -625,7 +647,7 @@ async function saveCreate() {
     }
 }
 
-// 일괄 삭제
+// ── 선택 항목 일괄 삭제 ──
 async function bulkDelete() {
     if (isSaving) return;
     const selectedRows = table.rows({ selected: true }).data().toArray();
@@ -680,7 +702,7 @@ async function bulkDelete() {
     bulkBtn.prop('disabled', false);
 }
 
-// 한국 시간 시계
+// ── 한국 시간 실시간 시계 ──
 const adminClockEl = document.getElementById('adminClock');
 function updateAdminClock() {
     if (!adminClockEl) return;
@@ -693,7 +715,6 @@ updateAdminClock();
 setInterval(updateAdminClock, 1000);
 
 function logout() { fetch('/api/admin/logout', { method:'POST', credentials:'include' }).then(() => location.reload()); }
-function zoomImage(s) { Swal.fire({ imageUrl: s, width:'auto', showConfirmButton:false, background:'transparent' }); }
 function printPage() { window.print(); }
 
 // 상세보기 인라인 파일 삭제
@@ -752,7 +773,7 @@ async function addFilesInline(requestId, fieldName, inputEl, remaining) {
     }
 }
 
-// 수정 모드 토글
+// ── 수정 모드: 상세보기 → 인라인 편집 전환 ──
 function toggleEditMode() {
     const d = dataById.get(currentDetailId);
     if (!d) return;
@@ -855,6 +876,7 @@ function cancelEditMode() {
     }
 }
 
+// ── 수정 저장 (필드 + 파일 삭제/추가를 한 번에 전송) ──
 async function saveEdit() {
     if (isSaving) return;
 
@@ -909,16 +931,12 @@ async function saveEdit() {
 
     // New file uploads — by category
     const depositInput = document.getElementById('edit_deposit_files');
-    if (depositInput && depositInput.files.length > 0) {
-        for (const f of depositInput.files) {
-            fd.append('deposit_files', f);
-        }
+    if (depositInput?.files.length > 0) {
+        for (const f of depositInput.files) fd.append('deposit_files', f);
     }
     const idCardInput = document.getElementById('edit_id_card_files');
-    if (idCardInput && idCardInput.files.length > 0) {
-        for (const f of idCardInput.files) {
-            fd.append('id_card_files', f);
-        }
+    if (idCardInput?.files.length > 0) {
+        for (const f of idCardInput.files) fd.append('id_card_files', f);
     }
 
     try {
@@ -938,6 +956,7 @@ async function saveEdit() {
     }
 }
 
+// ── 단건 삭제 (확인 후 실행) ──
 async function deleteRequest() {
     const d = dataById.get(currentDetailId);
     if (!d) return;
@@ -967,7 +986,7 @@ async function deleteRequest() {
     }
 }
 
-// 로그인
+// ── 로그인 폼 ──
 $('#loginForm').on('submit', async e => {
     e.preventDefault();
     const loginBtn = $('#loginForm button[type="submit"]');
@@ -987,7 +1006,7 @@ $('#loginForm').on('submit', async e => {
     }
 });
 
-// 엑셀
+// ── 엑셀 내보내기 (선택 행 또는 필터된 전체 행) ──
 function exportToExcel() {
     let rows = table.rows({ selected: true }).data().toArray();
     // 선택된 행이 없으면 필터된 전체 행 내보내기
@@ -1029,7 +1048,7 @@ function exportToExcel() {
     }
 }
 
-// Word 다운로드
+// ── Word(DOCX) 다운로드 ──
 async function downloadWord() {
     if (!currentDetailId) return;
     try {
@@ -1070,11 +1089,6 @@ async function downloadWord() {
     }
 }
 
-// 인쇄
-function printPage() {
-    window.print();
-}
-
 // 이미지 확대
 function zoomImage(src) {
     Swal.fire({
@@ -1087,22 +1101,43 @@ function zoomImage(src) {
     });
 }
 
-// Attach functions to window for HTML access
-window.logout = logout;
-window.exportToExcel = exportToExcel;
-window.openCreateModal = openCreateModal;
-window.bulkDelete = bulkDelete;
-window.resetFilters = resetFilters;
-window.closeModal = closeModal;
-window.deleteRequest = deleteRequest;
-window.toggleEditMode = toggleEditMode;
-window.saveEdit = saveEdit;
-window.saveCreate = saveCreate;
-window.cancelEditMode = cancelEditMode;
-window.downloadWord = downloadWord;
-window.printPage = printPage;
-window.zoomImage = zoomImage;
-window.updateStatusDirect = updateStatusDirect;
-window.deleteFileInline = deleteFileInline;
-window.addFilesInline = addFilesInline;
-window.openDetail = openDetail;
+// ╔═══════════════════════════════════════════════════════════╗
+// ║  이벤트 위임 (CSP nonce 호환 — inline onclick 대체)       ║
+// ╚═══════════════════════════════════════════════════════════╝
+
+// data-action 버튼 클릭 → 함수 매핑
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    const actions = {
+        logout, exportToExcel, openCreateModal, bulkDelete, resetFilters,
+        closeModal, deleteRequest, toggleEditMode, saveEdit, saveCreate,
+        cancelEditMode, downloadWord, printPage
+    };
+    if (actions[action]) actions[action]();
+});
+
+// 상태 드롭다운 변경 + 파일 추가 input
+document.addEventListener('change', (e) => {
+    const sel = e.target.closest('[data-status-change]');
+    if (sel) { updateStatusDirect(parseInt(sel.dataset.statusChange), sel); return; }
+    const fileInput = e.target.closest('[data-add-files]');
+    if (fileInput) { addFilesInline(parseInt(fileInput.dataset.addFiles), fileInput.dataset.field, fileInput, parseInt(fileInput.dataset.remaining)); return; }
+});
+
+// 파일 삭제 버튼 + 이미지 클릭 확대
+document.addEventListener('click', (e) => {
+    const delBtn = e.target.closest('[data-delete-file]');
+    if (delBtn) { deleteFileInline(parseInt(delBtn.dataset.deleteFile), parseInt(delBtn.dataset.fileId)); return; }
+    const zoomEl = e.target.closest('[data-zoom-image]');
+    if (zoomEl) { zoomImage(zoomEl.src || zoomEl.querySelector('img')?.src); return; }
+});
+
+// 이미지 Enter 키 접근성 (키보드 사용자 지원)
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        const zoomEl = e.target.closest('[data-zoom-image]');
+        if (zoomEl) zoomImage(zoomEl.src || zoomEl.querySelector('img')?.src);
+    }
+});

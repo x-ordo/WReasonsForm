@@ -202,6 +202,25 @@ select {
     background: transparent !important;
 }
 
+/* ── 모바일 반응형 ── */
+@media (max-width: 639px) {
+    /* 테이블 셀 콤팩트화 */
+    table.dataTable thead th { padding: 10px 8px !important; font-size: 13px !important; }
+    table.dataTable tbody td { padding: 10px 8px !important; font-size: 14px !important; }
+
+    /* 하단 정보+페이지네이션 세로 정렬 */
+    .dataTables_wrapper .dt-bottom {
+        flex-direction: column;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 4px;
+    }
+
+    /* 모달 내 정보 테이블 폰트 축소 */
+    #modalBody table th,
+    #modalBody table td { font-size: 13px !important; padding: 6px 8px !important; }
+}
+
 /* 인쇄: 모달 내용만 출력 */
 @media print {
     body * { visibility: hidden !important; }

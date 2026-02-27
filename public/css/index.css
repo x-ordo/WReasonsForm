@@ -1,3 +1,8 @@
 body { font-family: "Pretendard Variable", Pretendard, sans-serif; letter-spacing: -0.02em; }
 input::placeholder { color: #cbd5e1 !important; font-weight: 400 !important; opacity: 0.6; }
 .drag-over { border-color: #2563eb !important; background-color: #eff6ff !important; }
+
+/* 모바일: 드롭존 터치 영역 축소 (공간 절약) */
+@media (max-width: 639px) {
+    #id-drop-zone, #deposit-drop-zone, #md-deposit-drop-zone { padding-top: 1.25rem; padding-bottom: 1.25rem; }
+}

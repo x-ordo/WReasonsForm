@@ -1,3 +1,15 @@
+/**
+ * index.js — 공개 폼 페이지 (반환청구 / 오입금 신청)
+ *
+ * 주요 기능:
+ *   - 탭 전환 (반환청구 ↔ 오입금)
+ *   - 드래그앤드롭 파일 업로드 (입출금거래내역서, 신분증, 입금내역서)
+ *   - 입력값 실시간 포맷팅 (전화번호, 금액, 계좌번호)
+ *   - 한글 IME 조합 중 기호 삭제 방지 (compositionstart/end)
+ *   - 폼 제출 → 식별코드 발급 + 텍스트 파일 다운로드
+ *   - 진행 상태 조회 (식별코드 기반)
+ */
+
 // ── XSS 이스케이핑 헬퍼 ──
 function esc(str) {
     if (!str) return '';
@@ -134,8 +146,7 @@ function handleFilesGeneric(files, filesArray, fileInput, maxCount, label) {
     fileInput.value = '';
 }
 
-function renderFileListGeneric(filesArray, dropZone, filePreview, fileListEl, fileCountEl, addMoreBtnId, removeFn, borderColor, maxCount) {
-    maxCount = maxCount || 5;
+function renderFileListGeneric(filesArray, dropZone, filePreview, fileListEl, fileCountEl, addMoreBtnId, removeFn, borderColor, maxCount = 5) {
     if (filesArray.length === 0) {
         dropZone.classList.remove('hidden');
         filePreview.classList.add('hidden');
@@ -220,13 +231,11 @@ window.clearAllMdDepositFiles = clearAllMdDepositFiles;
 window.removeMdDepositFile = removeMdDepositFile;
 window.renderMdDepositFileList = renderMdDepositFileList;
 
+// ── 날짜·시계 초기화 ──
 const kstOpts = { timeZone: 'Asia/Seoul' };
-const todayKST = new Date().toLocaleDateString('sv-SE', kstOpts);
+const todayKST = new Date().toLocaleDateString('sv-SE', kstOpts); // YYYY-MM-DD 형식
 const dateDepositEl = document.getElementById('date_deposit');
-if (dateDepositEl) {
-    dateDepositEl.max = todayKST;
-    dateDepositEl.value = todayKST;
-}
+if (dateDepositEl) { dateDepositEl.max = todayKST; dateDepositEl.value = todayKST; }
 
 const clockEl = document.getElementById('liveClock');
 function updateClock() {
@@ -239,115 +248,60 @@ function updateClock() {
 updateClock();
 setInterval(updateClock, 1000);
 
-const inputPhoneEl = document.getElementById('input_phone');
-if (inputPhoneEl) {
-    inputPhoneEl.addEventListener('input', e => {
-        let v = e.target.value.replace(/\D/g, '').slice(0, 11);
-        if (v.length > 3 && v.length <= 7) v = v.slice(0, 3) + '-' + v.slice(3);
-        else if (v.length > 7) v = v.slice(0, 3) + '-' + v.slice(3, 7) + '-' + v.slice(7);
-        e.target.value = v;
-    });
+// ── 공통 입력 포맷터 ──
+function formatPhone(e) {
+    let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+    if (v.length > 3 && v.length <= 7) v = v.slice(0, 3) + '-' + v.slice(3);
+    else if (v.length > 7) v = v.slice(0, 3) + '-' + v.slice(3, 7) + '-' + v.slice(7);
+    e.target.value = v;
+}
+function formatAmount(e) {
+    let v = e.target.value.replace(/\D/g, '');
+    if (v.length > 10) v = v.slice(0, 10);
+    if (parseInt(v) > 9999999999) v = "9999999999";
+    e.target.value = v.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function formatAccount(e) {
+    e.target.value = e.target.value.replace(/\D/g, '').slice(0, 16);
 }
 
-const inputAmountEl = document.getElementById('input_amount');
-if (inputAmountEl) {
-    inputAmountEl.addEventListener('input', e => {
-        let v = e.target.value.replace(/\D/g, '');
-        if (v.length > 10) v = v.slice(0, 10);
-        if (parseInt(v) > 9999999999) v = "9999999999";
-        e.target.value = v.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    });
-}
+// 반환청구 폼 포맷터
+document.getElementById('input_phone')?.addEventListener('input', formatPhone);
+document.getElementById('input_amount')?.addEventListener('input', formatAmount);
+document.getElementById('input_account')?.addEventListener('input', formatAccount);
+document.getElementById('status_code')?.addEventListener('input', e => {
+    e.target.value = e.target.value.replace(/[^a-zA-Z0-9\-]/g, '').toUpperCase();
+});
 
-const inputAccountEl = document.getElementById('input_account');
-if (inputAccountEl) {
-    inputAccountEl.addEventListener('input', e => {
-        e.target.value = e.target.value.replace(/\D/g, '').slice(0, 16);
-    });
-}
-
-const statusCodeEl = document.getElementById('status_code');
-if (statusCodeEl) {
-    statusCodeEl.addEventListener('input', e => {
-        e.target.value = e.target.value.replace(/[^a-zA-Z0-9\-]/g, '').toUpperCase();
-    });
-}
-
-// ── 오입금 폼 입력 핸들러 ──
+// 오입금 폼 포맷터 + 날짜 초기화
 const mdDateDepositEl = document.getElementById('md_date_deposit');
 if (mdDateDepositEl) {
     mdDateDepositEl.max = todayKST;
     mdDateDepositEl.value = todayKST;
 }
+document.getElementById('md_input_phone')?.addEventListener('input', formatPhone);
+document.getElementById('md_input_amount')?.addEventListener('input', formatAmount);
+document.getElementById('md_input_account')?.addEventListener('input', formatAccount);
 
-const mdInputPhoneEl = document.getElementById('md_input_phone');
-if (mdInputPhoneEl) {
-    mdInputPhoneEl.addEventListener('input', e => {
-        let v = e.target.value.replace(/\D/g, '').slice(0, 11);
-        if (v.length > 3 && v.length <= 7) v = v.slice(0, 3) + '-' + v.slice(3);
-        else if (v.length > 7) v = v.slice(0, 3) + '-' + v.slice(3, 7) + '-' + v.slice(7);
-        e.target.value = v;
-    });
+// ── 공통 textarea 글자수 핸들러 (IME 조합 대응) ──
+function setupTextareaCharCount(textareaId, counterId, maxLen = 200) {
+    const textarea = document.getElementById(textareaId);
+    const counter = document.getElementById(counterId);
+    if (!textarea || !counter) return;
+
+    let composing = false;
+    const update = () => {
+        textarea.value = stripSymbolsText(textarea.value);
+        counter.textContent = `${textarea.value.length} / ${maxLen}`;
+        counter.classList.toggle('text-red-500', textarea.value.length >= maxLen);
+    };
+    textarea.addEventListener('compositionstart', () => { composing = true; });
+    textarea.addEventListener('compositionend', () => { composing = false; update(); });
+    textarea.addEventListener('input', () => { if (!composing) update(); });
 }
 
-const mdInputAmountEl = document.getElementById('md_input_amount');
-if (mdInputAmountEl) {
-    mdInputAmountEl.addEventListener('input', e => {
-        let v = e.target.value.replace(/\D/g, '');
-        if (v.length > 10) v = v.slice(0, 10);
-        if (parseInt(v) > 9999999999) v = "9999999999";
-        e.target.value = v.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    });
-}
-
-const mdInputAccountEl = document.getElementById('md_input_account');
-if (mdInputAccountEl) {
-    mdInputAccountEl.addEventListener('input', e => {
-        e.target.value = e.target.value.replace(/\D/g, '').slice(0, 16);
-    });
-}
-
-const mdDetailsInput = document.getElementById('md_input_details');
-const mdCharCount = document.getElementById('md-char-count');
-if (mdDetailsInput && mdCharCount) {
-    let mdDetailsComposing = false;
-    mdDetailsInput.addEventListener('compositionstart', () => { mdDetailsComposing = true; });
-    mdDetailsInput.addEventListener('compositionend', () => {
-        mdDetailsComposing = false;
-        mdDetailsInput.value = stripSymbolsText(mdDetailsInput.value);
-        mdCharCount.textContent = `${mdDetailsInput.value.length} / 200`;
-        if (mdDetailsInput.value.length >= 200) mdCharCount.classList.add('text-red-500');
-        else mdCharCount.classList.remove('text-red-500');
-    });
-    mdDetailsInput.addEventListener('input', () => {
-        if (mdDetailsComposing) return;
-        mdDetailsInput.value = stripSymbolsText(mdDetailsInput.value);
-        mdCharCount.textContent = `${mdDetailsInput.value.length} / 200`;
-        if (mdDetailsInput.value.length >= 200) mdCharCount.classList.add('text-red-500');
-        else mdCharCount.classList.remove('text-red-500');
-    });
-}
-
-const detailsInput = document.getElementById('input_details');
-const charCount = document.getElementById('char-count');
-if (detailsInput && charCount) {
-    let detailsComposing = false;
-    detailsInput.addEventListener('compositionstart', () => { detailsComposing = true; });
-    detailsInput.addEventListener('compositionend', () => {
-        detailsComposing = false;
-        detailsInput.value = stripSymbolsText(detailsInput.value);
-        charCount.textContent = `${detailsInput.value.length} / 200`;
-        if (detailsInput.value.length >= 200) charCount.classList.add('text-red-500');
-        else charCount.classList.remove('text-red-500');
-    });
-    detailsInput.addEventListener('input', () => {
-        if (detailsComposing) return;
-        detailsInput.value = stripSymbolsText(detailsInput.value);
-        charCount.textContent = `${detailsInput.value.length} / 200`;
-        if (detailsInput.value.length >= 200) charCount.classList.add('text-red-500');
-        else charCount.classList.remove('text-red-500');
-    });
-}
+setupTextareaCharCount('md_input_details', 'md-char-count');
+setupTextareaCharCount('input_details', 'char-count');
 
 function openTermsModal() {
     Swal.fire({
@@ -371,28 +325,31 @@ window.removeDepositFile = removeDepositFile;
 window.renderDepositFileList = renderDepositFileList;
 window.renderIdFileList = renderIdFileList;
 
-const form = document.getElementById('requestForm');
-if (form) {
+// ── 공통 폼 제출 핸들러 ──
+function setupFormSubmit(formId, { validate, attachFiles, accentColor }) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+
     const submitBtn = form.querySelector('button[type="submit"]');
-    const submitBtnOrigText = submitBtn.textContent;
+    const origText = submitBtn.textContent;
+
     form.addEventListener('submit', async e => {
         e.preventDefault();
         if (isSubmitting) return;
 
         const formData = new FormData(form);
+
+        // 공통 검증
         const errors = [];
         if (!formData.get('applicant_name').trim()) errors.push('이름 필수');
         if (formData.get('applicant_phone').replace(/\D/g, '').length < 10) errors.push('연락처 확인');
         if (!formData.get('deposit_amount')) errors.push('금액 필수');
-        if (selectedDepositFiles.length === 0) errors.push('입출금거래내역서 파일 필수');
-        if (selectedIdFiles.length === 0) errors.push('신분증 파일 필수');
         if (!formData.get('terms')) errors.push('약관 동의 필수');
-
-        const amountRaw = Number(formData.get('deposit_amount').replace(/,/g, ''));
-        if (amountRaw < 2000000) errors.push('반환 청구는 200만원 이상만 신청 가능합니다');
+        // 폼별 추가 검증
+        validate?.(formData, errors);
 
         if (errors.length > 0) {
-            Swal.fire({ icon:'warning', title:'입력 누락', html: errors.join('<br>') });
+            Swal.fire({ icon: 'warning', title: '입력 누락', html: errors.join('<br>') });
             return;
         }
 
@@ -402,81 +359,63 @@ if (form) {
 
         formData.set('deposit_amount', formData.get('deposit_amount').replace(/,/g, ''));
         formData.set('terms_agreed', formData.get('terms') ? '1' : '0');
-        selectedDepositFiles.forEach(f => formData.append('deposit_files', f, f.name));
-        selectedIdFiles.forEach(f => formData.append('id_card_files', f, f.name));
+        attachFiles(formData);
 
         try {
             const { ok, data: res } = await safeFetch('/api/request', { method: 'POST', body: formData }, 60000);
             if (ok && res.success) {
                 downloadCodeAsTxt(res.requestCode);
-                const code = String(res.requestCode).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+                const code = String(res.requestCode).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
                 let copied = false;
-                try { await navigator.clipboard.writeText(res.requestCode); copied = true; } catch(e) {}
-                Swal.fire({ icon:'success', title:'제출 완료', html:`<p class="text-sm text-gray-500 mt-2">식별코드: <strong class="text-blue-600 text-xl">${code}</strong></p><p class="text-xs text-gray-400 mt-1">${copied ? '클립보드에 복사되었습니다' : '식별코드를 메모해 주세요'}</p><p class="text-xs text-green-600 mt-1">식별코드 파일이 다운로드되었습니다</p>` })
-                .then(() => location.reload());
-            } else { Swal.fire('오류', res.error || '제출에 실패했습니다.', 'error'); }
-        } catch (err) { console.error('Submit error:', err); Swal.fire('오류', err.message, 'error'); }
-        finally {
+                try { await navigator.clipboard.writeText(res.requestCode); copied = true; } catch {}
+                Swal.fire({ icon: 'success', title: '제출 완료', html: `<p class="text-sm text-gray-500 mt-2">식별코드: <strong class="${accentColor} text-xl">${code}</strong></p><p class="text-xs text-gray-400 mt-1">${copied ? '클립보드에 복사되었습니다' : '식별코드를 메모해 주세요'}</p><p class="text-xs text-green-600 mt-1">식별코드 파일이 다운로드되었습니다</p>` })
+                    .then(() => location.reload());
+            } else {
+                Swal.fire('오류', res.error || '제출에 실패했습니다.', 'error');
+            }
+        } catch (err) {
+            console.error('Submit error:', err);
+            Swal.fire('오류', err.message, 'error');
+        } finally {
             isSubmitting = false;
             submitBtn.disabled = false;
-            submitBtn.textContent = submitBtnOrigText;
+            submitBtn.textContent = origText;
         }
     });
 }
 
-const mdForm = document.getElementById('misdepositForm');
-if (mdForm) {
-    const mdSubmitBtn = mdForm.querySelector('button[type="submit"]');
-    const mdSubmitBtnOrigText = mdSubmitBtn.textContent;
-    mdForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        if (isSubmitting) return;
+// ── 반환청구 폼 제출 ──
+setupFormSubmit('requestForm', {
+    validate(fd, errors) {
+        if (selectedDepositFiles.length === 0) errors.push('입출금거래내역서 파일 필수');
+        if (selectedIdFiles.length === 0) errors.push('신분증 파일 필수');
+        const amountRaw = Number(fd.get('deposit_amount').replace(/,/g, ''));
+        if (amountRaw < 2000000) errors.push('반환 청구는 200만원 이상만 신청 가능합니다');
+    },
+    attachFiles(fd) {
+        selectedDepositFiles.forEach(f => fd.append('deposit_files', f, f.name));
+        selectedIdFiles.forEach(f => fd.append('id_card_files', f, f.name));
+    },
+    accentColor: 'text-blue-600',
+});
 
-        const formData = new FormData(mdForm);
-        const errors = [];
-        if (!formData.get('applicant_name').trim()) errors.push('이름 필수');
-        if (formData.get('applicant_phone').replace(/\D/g, '').length < 10) errors.push('연락처 확인');
-        if (!formData.get('deposit_amount')) errors.push('금액 필수');
-        if (!formData.get('bank_name').trim()) errors.push('은행명 필수');
-        if (!formData.get('refund_account').trim()) errors.push('계좌번호 필수');
-        if (!formData.get('contractor_type').trim()) errors.push('지사코드 필수');
-        if (!formData.get('merchant_type').trim()) errors.push('가맹점코드 필수');
-        if (!formData.get('deposit_date')) errors.push('입금일자 필수');
+// ── 오입금 폼 제출 ──
+setupFormSubmit('misdepositForm', {
+    validate(fd, errors) {
+        if (!fd.get('bank_name')?.trim()) errors.push('은행명 필수');
+        if (!fd.get('refund_account')?.trim()) errors.push('계좌번호 필수');
+        if (!fd.get('contractor_type')?.trim()) errors.push('지사코드 필수');
+        if (!fd.get('merchant_type')?.trim()) errors.push('가맹점코드 필수');
+        if (!fd.get('deposit_date')) errors.push('입금일자 필수');
         if (selectedMdDepositFiles.length === 0) errors.push('입금내역서 파일 필수');
-        if (!formData.get('terms')) errors.push('약관 동의 필수');
+    },
+    attachFiles(fd) {
+        selectedMdDepositFiles.forEach(f => fd.append('deposit_files', f, f.name));
+    },
+    accentColor: 'text-orange-600',
+});
 
-        if (errors.length > 0) {
-            Swal.fire({ icon:'warning', title:'입력 누락', html: errors.join('<br>') });
-            return;
-        }
-
-        isSubmitting = true;
-        mdSubmitBtn.disabled = true;
-        mdSubmitBtn.textContent = '제출 중\u2026';
-
-        formData.set('deposit_amount', formData.get('deposit_amount').replace(/,/g, ''));
-        formData.set('terms_agreed', formData.get('terms') ? '1' : '0');
-        selectedMdDepositFiles.forEach(f => formData.append('deposit_files', f, f.name));
-
-        try {
-            const { ok, data: res } = await safeFetch('/api/request', { method: 'POST', body: formData }, 60000);
-            if (ok && res.success) {
-                downloadCodeAsTxt(res.requestCode);
-                const code = String(res.requestCode).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
-                let copied = false;
-                try { await navigator.clipboard.writeText(res.requestCode); copied = true; } catch(e) {}
-                Swal.fire({ icon:'success', title:'제출 완료', html:`<p class="text-sm text-gray-500 mt-2">식별코드: <strong class="text-orange-600 text-xl">${code}</strong></p><p class="text-xs text-gray-400 mt-1">${copied ? '클립보드에 복사되었습니다' : '식별코드를 메모해 주세요'}</p><p class="text-xs text-green-600 mt-1">식별코드 파일이 다운로드되었습니다</p>` })
-                .then(() => location.reload());
-            } else { Swal.fire('오류', res.error || '제출에 실패했습니다.', 'error'); }
-        } catch (err) { console.error('Submit error:', err); Swal.fire('오류', err.message, 'error'); }
-        finally {
-            isSubmitting = false;
-            mdSubmitBtn.disabled = false;
-            mdSubmitBtn.textContent = mdSubmitBtnOrigText;
-        }
-    });
-}
-
+// ── 식별코드 텍스트 파일 자동 다운로드 ──
 function downloadCodeAsTxt(requestCode) {
     const now = new Date();
     const kstStr = now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -503,6 +442,7 @@ function downloadCodeAsTxt(requestCode) {
     document.body.removeChild(a);
 }
 
+// ── 진행 상태 조회 화면 전환 및 API 호출 ──
 function showStatusCheck() {
     document.getElementById('submitSection').classList.add('hidden');
     document.getElementById('misdepositSection').classList.add('hidden');
