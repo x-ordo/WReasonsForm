@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#F9FAFB">
     <title>사유서</title>
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="stylesheet" href="css/fonts.css">
     <link rel="stylesheet" href="css/index.css">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,13 +14,14 @@
     <script src="js/tailwind-config.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen">
+    <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:bg-white focus:px-4 focus:py-2 focus:text-blue-600 focus:font-bold">본문으로 건너뛰기</a>
 
     <nav class="bg-white shadow-sm border-b sticky top-0 z-50">
         <div class="max-w-4xl mx-auto px-4 py-3 sm:py-4 flex justify-between items-center gap-3">
             <a href="/public/index.html" class="text-lg sm:text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors no-underline whitespace-nowrap">신청 Form</a>
             <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                 <span id="liveClock" class="text-sm font-bold text-gray-400 tabular-nums tracking-tight hidden sm:inline"></span>
-                <button onclick="showStatusCheck()" class="text-xs sm:text-sm font-black text-white bg-blue-600 hover:bg-blue-700 px-3 sm:px-4 py-2 rounded-lg transition-all shadow-sm active:scale-[0.97] whitespace-nowrap">진행 상태 조회</button>
+                <button onclick="showStatusCheck()" class="text-xs sm:text-sm font-black text-white bg-blue-600 hover:bg-blue-700 px-3 sm:px-4 py-2 rounded-lg transition-colors shadow-sm motion-safe:active:scale-[0.97] whitespace-nowrap">진행 상태 조회</button>
             </div>
         </div>
     </nav>
@@ -29,7 +33,7 @@
         </div>
     </div>
 
-    <main class="max-w-6xl mx-auto px-4 py-6 sm:py-10">
+    <main id="main" class="max-w-6xl mx-auto px-4 py-6 sm:py-10">
 
         <div id="submitSection" class="bg-white rounded-lg shadow-sm p-5 sm:p-8 border border-gray-200">
 
@@ -82,7 +86,7 @@
                             <label class="block text-sm font-bold text-gray-500">상세 청구 사유 (최대 200자)</label>
                             <span id="char-count" class="text-xs font-bold text-gray-400 tracking-tighter">0 / 200</span>
                         </div>
-                        <textarea id="input_details" name="details" maxlength="200" rows="3" class="w-full flex-1 border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all resize-none font-medium text-gray-600 text-base" placeholder="오입금 상황을 상세히 적어주세요."></textarea>
+                        <textarea id="input_details" name="details" maxlength="200" rows="3" class="w-full flex-1 border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all resize-none font-medium text-gray-600 text-base" placeholder="오입금 상황을 상세히 적어주세요&#8230;"></textarea>
                     </div>
 
                     <!-- Row 3: 은행명 / 계좌번호 / (상세사유 continues via row-span) -->
@@ -101,10 +105,10 @@
                             <span class="w-1 h-3 bg-green-600 rounded-full"></span> 신청인 신분증
                         </h4>
 
-                        <input id="id-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf">
+                        <input id="id-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" aria-label="신분증 파일 선택">
 
-                        <div id="id-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-8 border-2 border-gray-200 border-dashed rounded-lg hover:bg-green-50 hover:border-green-400 transition-all cursor-pointer group">
-                            <svg class="h-10 w-10 text-gray-300 group-hover:text-green-500 transition-colors mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                        <div id="id-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-8 border-2 border-gray-200 border-dashed rounded-lg hover:bg-green-50 hover:border-green-400 transition-colors cursor-pointer group">
+                            <svg class="h-10 w-10 text-gray-300 group-hover:text-green-500 transition-colors mb-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
                             <p class="text-gray-700 font-bold text-sm">신분증 파일을 이 곳에 끌어다 놓으세요</p>
                             <p class="text-xs text-gray-400 mt-1">1개, 10MB, PNG/JPG/PDF</p>
                         </div>
@@ -126,10 +130,10 @@
                             <span class="w-1 h-3 bg-blue-500 rounded-full"></span> 입출금거래내역서
                         </h4>
 
-                        <input id="deposit-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple>
+                        <input id="deposit-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple aria-label="입출금거래내역서 파일 선택">
 
-                        <div id="deposit-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-8 border-2 border-gray-200 border-dashed rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-all cursor-pointer group">
-                            <svg class="h-10 w-10 text-gray-300 group-hover:text-blue-500 transition-colors mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                        <div id="deposit-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-8 border-2 border-gray-200 border-dashed rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-colors cursor-pointer group">
+                            <svg class="h-10 w-10 text-gray-300 group-hover:text-blue-500 transition-colors mb-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
                             <p class="text-gray-700 font-bold text-sm">입출금거래내역서 파일을 이 곳에 끌어다 놓으세요</p>
                             <p class="text-xs text-gray-400 mt-1">최대 5개, 10MB/개, PNG/JPG/PDF</p>
                         </div>
@@ -152,13 +156,13 @@
                 <div class="mt-8 space-y-5">
                     <div class="flex items-center justify-center bg-gray-50 px-4 py-3.5 rounded-lg border border-gray-200">
                         <input id="terms" name="terms" type="checkbox" required class="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer flex-shrink-0">
-                        <div class="ml-3 text-sm sm:text-base font-bold text-gray-700 cursor-pointer underline decoration-blue-200 underline-offset-4" onclick="document.getElementById('terms').click()">
+                        <label for="terms" class="ml-3 text-sm sm:text-base font-bold text-gray-700 cursor-pointer underline decoration-blue-200 underline-offset-4">
                             개인정보 수집 및 이용 동의 (필수)
                             <button type="button" onclick="event.stopPropagation(); openTermsModal()" class="text-xs font-black bg-blue-600 text-white px-2.5 py-0.5 rounded ml-2 shadow-sm tracking-tighter">보기</button>
-                        </div>
+                        </label>
                     </div>
 
-                    <button type="submit" class="w-full bg-blue-600 text-white font-black py-3.5 rounded-lg hover:bg-blue-700 transition-all shadow-sm active:scale-[0.98] text-lg">
+                    <button type="submit" class="w-full bg-blue-600 text-white font-black py-3.5 rounded-lg hover:bg-blue-700 transition-colors shadow-sm motion-safe:active:scale-[0.98] text-lg">
                         사유서 제출하기
                     </button>
                 </div>
@@ -215,7 +219,7 @@
                             <label class="block text-sm font-bold text-gray-500">상세 사유 (최대 200자)</label>
                             <span id="md-char-count" class="text-xs font-bold text-gray-400 tracking-tighter">0 / 200</span>
                         </div>
-                        <textarea id="md_input_details" name="details" maxlength="200" rows="3" class="w-full flex-1 border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none transition-all resize-none font-medium text-gray-600 text-base" placeholder="오입금 또는 누락 사유를 상세히 적어주세요."></textarea>
+                        <textarea id="md_input_details" name="details" maxlength="200" rows="3" class="w-full flex-1 border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none transition-all resize-none font-medium text-gray-600 text-base" placeholder="오입금 또는 누락 사유를 상세히 적어주세요&#8230;"></textarea>
                     </div>
 
                     <!-- Row 3: 은행명 / 계좌번호 -->
@@ -234,10 +238,10 @@
                             <span class="w-1 h-3 bg-orange-500 rounded-full"></span> 입금내역서
                         </h4>
 
-                        <input id="md-deposit-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple>
+                        <input id="md-deposit-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple aria-label="입금내역서 파일 선택">
 
-                        <div id="md-deposit-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-8 border-2 border-gray-200 border-dashed rounded-lg hover:bg-orange-50 hover:border-orange-400 transition-all cursor-pointer group">
-                            <svg class="h-10 w-10 text-gray-300 group-hover:text-orange-500 transition-colors mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                        <div id="md-deposit-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-8 border-2 border-gray-200 border-dashed rounded-lg hover:bg-orange-50 hover:border-orange-400 transition-colors cursor-pointer group">
+                            <svg class="h-10 w-10 text-gray-300 group-hover:text-orange-500 transition-colors mb-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
                             <p class="text-gray-700 font-bold text-sm">입금내역서 파일을 이 곳에 끌어다 놓으세요</p>
                             <p class="text-xs text-gray-400 mt-1">최대 5개, 10MB/개, PNG/JPG/PDF</p>
                         </div>
@@ -260,13 +264,13 @@
                 <div class="mt-8 space-y-5">
                     <div class="flex items-center justify-center bg-gray-50 px-4 py-3.5 rounded-lg border border-gray-200">
                         <input id="md_terms" name="terms" type="checkbox" required class="w-5 h-5 text-orange-600 border-gray-300 rounded focus:ring-orange-500 cursor-pointer flex-shrink-0">
-                        <div class="ml-3 text-sm sm:text-base font-bold text-gray-700 cursor-pointer underline decoration-orange-200 underline-offset-4" onclick="document.getElementById('md_terms').click()">
+                        <label for="md_terms" class="ml-3 text-sm sm:text-base font-bold text-gray-700 cursor-pointer underline decoration-orange-200 underline-offset-4">
                             개인정보 수집 및 이용 동의 (필수)
                             <button type="button" onclick="event.stopPropagation(); openTermsModal()" class="text-xs font-black bg-orange-600 text-white px-2.5 py-0.5 rounded ml-2 shadow-sm tracking-tighter">보기</button>
-                        </div>
+                        </label>
                     </div>
 
-                    <button type="submit" class="w-full bg-orange-600 text-white font-black py-3.5 rounded-lg hover:bg-orange-700 transition-all shadow-sm active:scale-[0.98] text-lg">
+                    <button type="submit" class="w-full bg-orange-600 text-white font-black py-3.5 rounded-lg hover:bg-orange-700 transition-colors shadow-sm motion-safe:active:scale-[0.98] text-lg">
                         오입금 포인트 신청하기
                     </button>
                 </div>
@@ -275,8 +279,8 @@
 
         <!-- 상태 조회 -->
         <div id="statusSection" class="hidden bg-white rounded-lg shadow-sm p-6 sm:p-8 border border-gray-200">
-            <button onclick="showSubmit()" class="text-sm font-bold text-gray-500 mb-8 border border-gray-200 px-4 py-2 rounded-md hover:bg-gray-50 transition-all flex items-center gap-1.5">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>
+            <button onclick="showSubmit()" class="text-sm font-bold text-gray-500 mb-8 border border-gray-200 px-4 py-2 rounded-md hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>
                 사유서 작성으로 돌아가기
             </button>
 
@@ -287,8 +291,8 @@
 
             <div class="space-y-6">
                 <div class="flex gap-2">
-                    <input type="text" id="status_code" placeholder="식별코드 입력 (예: R-260222-001-ABC)" maxlength="18" class="flex-1 border border-gray-200 rounded-lg py-3.5 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 font-bold text-lg tracking-tight placeholder:text-gray-300 placeholder:font-medium">
-                    <button onclick="checkStatus()" class="bg-[#1A1A1A] text-white px-6 py-3.5 rounded-lg font-bold hover:bg-black transition-all text-base whitespace-nowrap">조회</button>
+                    <input type="text" id="status_code" placeholder="식별코드 입력 (예: R-260222-001-ABC)" maxlength="18" autocomplete="off" spellcheck="false" class="flex-1 border border-gray-200 rounded-lg py-3.5 px-4 outline-none focus-visible:border-blue-500 focus-visible:ring-4 focus-visible:ring-blue-50 font-bold text-lg tracking-tight placeholder:text-gray-300 placeholder:font-medium">
+                    <button onclick="checkStatus()" class="bg-[#1A1A1A] text-white px-6 py-3.5 rounded-lg font-bold hover:bg-black transition-colors text-base whitespace-nowrap">조회</button>
                 </div>
 
                 <div id="statusResult" class="hidden">

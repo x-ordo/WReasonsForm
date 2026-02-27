@@ -398,7 +398,7 @@ if (form) {
 
         isSubmitting = true;
         submitBtn.disabled = true;
-        submitBtn.textContent = '제출 중...';
+        submitBtn.textContent = '제출 중\u2026';
 
         formData.set('deposit_amount', formData.get('deposit_amount').replace(/,/g, ''));
         formData.set('terms_agreed', formData.get('terms') ? '1' : '0');
@@ -411,7 +411,7 @@ if (form) {
                 downloadCodeAsTxt(res.requestCode);
                 const code = String(res.requestCode).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
                 let copied = false;
-                try { const ta = document.createElement('textarea'); ta.value = res.requestCode; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); copied = document.execCommand('copy'); document.body.removeChild(ta); } catch(e) {}
+                try { await navigator.clipboard.writeText(res.requestCode); copied = true; } catch(e) {}
                 Swal.fire({ icon:'success', title:'제출 완료', html:`<p class="text-sm text-gray-500 mt-2">식별코드: <strong class="text-blue-600 text-xl">${code}</strong></p><p class="text-xs text-gray-400 mt-1">${copied ? '클립보드에 복사되었습니다' : '식별코드를 메모해 주세요'}</p><p class="text-xs text-green-600 mt-1">식별코드 파일이 다운로드되었습니다</p>` })
                 .then(() => location.reload());
             } else { Swal.fire('오류', res.error || '제출에 실패했습니다.', 'error'); }
@@ -452,7 +452,7 @@ if (mdForm) {
 
         isSubmitting = true;
         mdSubmitBtn.disabled = true;
-        mdSubmitBtn.textContent = '제출 중...';
+        mdSubmitBtn.textContent = '제출 중\u2026';
 
         formData.set('deposit_amount', formData.get('deposit_amount').replace(/,/g, ''));
         formData.set('terms_agreed', formData.get('terms') ? '1' : '0');
@@ -464,7 +464,7 @@ if (mdForm) {
                 downloadCodeAsTxt(res.requestCode);
                 const code = String(res.requestCode).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
                 let copied = false;
-                try { const ta = document.createElement('textarea'); ta.value = res.requestCode; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); copied = document.execCommand('copy'); document.body.removeChild(ta); } catch(e) {}
+                try { await navigator.clipboard.writeText(res.requestCode); copied = true; } catch(e) {}
                 Swal.fire({ icon:'success', title:'제출 완료', html:`<p class="text-sm text-gray-500 mt-2">식별코드: <strong class="text-orange-600 text-xl">${code}</strong></p><p class="text-xs text-gray-400 mt-1">${copied ? '클립보드에 복사되었습니다' : '식별코드를 메모해 주세요'}</p><p class="text-xs text-green-600 mt-1">식별코드 파일이 다운로드되었습니다</p>` })
                 .then(() => location.reload());
             } else { Swal.fire('오류', res.error || '제출에 실패했습니다.', 'error'); }
@@ -532,7 +532,7 @@ async function checkStatus() {
             document.getElementById('statusResult').classList.remove('hidden');
             document.getElementById('res_status').textContent = res.data.status;
             document.getElementById('res_name').textContent = res.data.applicant_name;
-            document.getElementById('res_date').textContent = new Date(res.data.created_at).toLocaleString('ko-KR');
+            document.getElementById('res_date').textContent = new Date(res.data.created_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
             const badge = document.getElementById('res_type_badge');
             const isMisdeposit = res.data.request_type === '오입금';
             badge.textContent = isMisdeposit ? '오입금' : '반환청구';

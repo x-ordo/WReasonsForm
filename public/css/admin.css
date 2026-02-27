@@ -133,7 +133,7 @@ select {
     outline: none;
     cursor: pointer;
 }
-.list-status-select:focus { border-color: #A3A3A3; }
+.list-status-select:focus-visible { border-color: #A3A3A3; box-shadow: 0 0 0 2px rgba(163, 163, 163, 0.3); }
 .list-status-select option { color: #1A1A1A; background: #fff; }
 
 /* 상태 텍스트 (완료 등 고정 상태) */

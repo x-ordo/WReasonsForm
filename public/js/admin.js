@@ -52,10 +52,10 @@ $(document).ready(async () => {
     } catch (e) { /* 미인증 상태 — 로그인 화면 유지 */ }
 });
 
+const _dateFmt = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' });
 function fmtDate(d) {
     if (!d) return '-';
-    const dt = new Date(d);
-    return `${dt.getFullYear()}.${String(dt.getMonth()+1).padStart(2,'0')}.${String(dt.getDate()).padStart(2,'0')}`;
+    return _dateFmt.format(new Date(d)).replace(/\s/g, '');
 }
 
 function fmtPhone(p) {
@@ -361,7 +361,7 @@ async function openDetail(id) {
                     </div>`;
                 } else {
                     return `<div class="mb-2">
-                        <img src="${src}" class="max-w-full rounded cursor-pointer" onclick="zoomImage(this.src)" style="max-height: 240px;">
+                        <img src="${src}" alt="${esc(f.original_name)}" class="max-w-full rounded cursor-pointer" onclick="zoomImage(this.src)" onkeydown="if(event.key==='Enter')zoomImage(this.src)" tabindex="0" role="button" style="max-height: 240px;" loading="lazy">
                         <div class="flex items-center justify-between mt-1">
                             <p class="text-xs text-[#A3A3A3] truncate">${esc(f.original_name)}</p>
                             ${deleteBtn}
@@ -578,7 +578,7 @@ async function saveCreate() {
 
     isSaving = true;
     const saveBtn = $('#btnSaveCreate');
-    saveBtn.prop('disabled', true).text('저장 중...');
+    saveBtn.prop('disabled', true).text('저장 중\u2026');
 
     const fd = new FormData();
     fd.append('applicant_name', $('#create_applicant_name').val());
@@ -633,7 +633,7 @@ async function bulkDelete() {
 
     // 선택된 행에서 ID + request_code 추출
     const items = selectedRows.map(r => ({
-        id: $(r[11]).data('id'),
+        id: $(r[12]).data('id'),
         code: $(r[2]).text()
     })).filter(i => i.id);
     if (items.length === 0) return;
@@ -652,7 +652,7 @@ async function bulkDelete() {
     isSaving = true;
     const bulkBtn = $('#btnBulkDelete button, #btnBulkDelete');
     bulkBtn.prop('disabled', true);
-    Swal.fire({ title: '삭제 중...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+    Swal.fire({ title: '삭제 중\u2026', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
 
     let successCount = 0;
     const failedCodes = [];
@@ -736,7 +736,7 @@ async function addFilesInline(requestId, fieldName, inputEl, remaining) {
     }
     inputEl.value = '';
 
-    Swal.fire({ title: '업로드 중...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+    Swal.fire({ title: '업로드 중\u2026', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
 
     try {
         const { ok, data: json } = await safeFetch(`/api/admin/request/${requestId}/files`, { method: 'POST', body: fd }, 60000);
@@ -882,7 +882,7 @@ async function saveEdit() {
 
     isSaving = true;
     const saveBtn = $('#btnSaveEdit');
-    saveBtn.prop('disabled', true).text('저장 중...');
+    saveBtn.prop('disabled', true).text('저장 중\u2026');
 
     const fd = new FormData();
     fd.append('applicant_name', $('#edit_applicant_name').val());
@@ -971,7 +971,7 @@ async function deleteRequest() {
 $('#loginForm').on('submit', async e => {
     e.preventDefault();
     const loginBtn = $('#loginForm button[type="submit"]');
-    loginBtn.prop('disabled', true).text('로그인 중...');
+    loginBtn.prop('disabled', true).text('로그인 중\u2026');
     try {
         const { ok, data: res } = await safeFetch('/api/admin/login', {
             method: 'POST',

@@ -3,7 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1A1A1A">
     <title>사유서 제작 - 관리</title>
+    <link rel="preconnect" href="https://code.jquery.com">
+    <link rel="preconnect" href="https://cdn.datatables.net">
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
     <link rel="stylesheet" href="css/fonts.css">
     <link rel="stylesheet" href="css/admin.css">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha384-1H217gwSVyLSIfaLxHbE7dRb3v4mYCKbpQvzx0cegeju1MVsGrX5xXxAvs/HgeFs" crossorigin="anonymous"></script>
@@ -24,8 +30,8 @@
             <h1 class="text-2xl font-bold text-[#1A1A1A] mb-1 tracking-tight">사유서 제작</h1>
             <p class="text-[#A3A3A3] text-sm mb-8">관리자 로그인</p>
             <form id="loginForm" class="space-y-3">
-                <input type="text" id="adminUsername" placeholder="아이디" required class="w-full border border-[#E5E5E5] rounded-md px-4 py-3 outline-none focus:border-[#A3A3A3] font-medium text-[#1A1A1A] placeholder-[#D4D4D4]">
-                <input type="password" id="adminPassword" placeholder="비밀번호" required class="w-full border border-[#E5E5E5] rounded-md px-4 py-3 outline-none focus:border-[#A3A3A3] font-medium text-[#1A1A1A] placeholder-[#D4D4D4]">
+                <input type="text" id="adminUsername" placeholder="아이디" required autocomplete="username" class="w-full border border-[#E5E5E5] rounded-md px-4 py-3 outline-none focus-visible:border-[#A3A3A3] font-medium text-[#1A1A1A] placeholder-[#D4D4D4]">
+                <input type="password" id="adminPassword" placeholder="비밀번호" required autocomplete="current-password" class="w-full border border-[#E5E5E5] rounded-md px-4 py-3 outline-none focus-visible:border-[#A3A3A3] font-medium text-[#1A1A1A] placeholder-[#D4D4D4]">
                 <button type="submit" class="w-full bg-[#1A1A1A] text-white font-bold py-3 rounded-md hover:bg-[#333] transition-colors">로그인</button>
             </form>
         </div>
@@ -57,15 +63,15 @@
                             <option value="-1">전체</option>
                         </select>
                         <button onclick="exportToExcel()" class="border border-[#E5E5E5] text-[#404040] px-5 py-2 rounded-md font-semibold text-sm hover:bg-[#F5F5F5] transition-colors flex items-center gap-2 whitespace-nowrap">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                             엑셀
                         </button>
                         <button onclick="openCreateModal()" class="bg-[#1A1A1A] text-white px-5 py-2 rounded-md font-semibold text-sm hover:bg-[#333] transition-colors flex items-center gap-2 whitespace-nowrap">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+                            <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
                             신규 등록
                         </button>
                         <button id="btnBulkDelete" onclick="bulkDelete()" class="hidden border border-red-300 text-red-600 px-5 py-2 rounded-md font-semibold text-sm hover:bg-red-50 transition-colors items-center gap-2 whitespace-nowrap">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                             <span id="bulkDeleteLabel">선택 삭제</span>
                         </button>
                     </div>
@@ -73,8 +79,8 @@
                 <!-- 하단: 검색 + 필터 -->
                 <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-[#F0F0F0]">
                     <div class="relative">
-                        <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#A3A3A3]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-                        <input type="text" id="customSearch" placeholder="이름, 코드, 연락처 검색" class="bg-[#FAFAFA] border border-[#E5E5E5] rounded-md pl-9 pr-4 py-2 text-sm font-medium text-[#1A1A1A] outline-none focus:border-[#A3A3A3] focus:bg-white w-56 placeholder-[#A3A3A3] transition-colors">
+                        <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#A3A3A3]" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                        <input type="text" id="customSearch" placeholder="이름, 코드, 연락처 검색" autocomplete="off" class="bg-[#FAFAFA] border border-[#E5E5E5] rounded-md pl-9 pr-4 py-2 text-sm font-medium text-[#1A1A1A] outline-none focus-visible:border-[#A3A3A3] focus-visible:bg-white w-56 placeholder-[#A3A3A3] transition-colors">
                     </div>
                     <div class="w-px h-6 bg-[#E5E5E5] mx-1 hidden sm:block"></div>
                     <select id="filter_contractor" class="bg-[#FAFAFA] border border-[#E5E5E5] rounded-md px-3 py-2 text-sm font-semibold text-[#404040] outline-none focus:border-[#A3A3A3] cursor-pointer"></select>
@@ -102,7 +108,7 @@
                 <table id="requestTable" class="w-full">
                     <thead>
                         <tr>
-                            <th><input type="checkbox" id="selectAll" class="cursor-pointer"></th>
+                            <th><input type="checkbox" id="selectAll" class="cursor-pointer" aria-label="전체 선택"></th>
                             <th>신청일</th>
                             <th>식별코드</th>
                             <th>유형</th>
@@ -124,10 +130,10 @@
     </div>
 
     <!-- 상세 모달 — 뷰포트 내 맞춤 -->
-    <div id="detailModal" class="hidden fixed inset-0 bg-[#525252]/60 z-50 flex items-center justify-center p-2 sm:p-4">
+    <div id="detailModal" class="hidden fixed inset-0 bg-[#525252]/60 z-50 flex items-center justify-center p-2 sm:p-4" style="overscroll-behavior: contain;">
         <div class="bg-white w-full max-w-[720px] shadow-lg rounded-lg relative flex flex-col" style="max-height: calc(100vh - 2rem);">
             <!-- 닫기 버튼 -->
-            <button onclick="closeModal()" class="modal-close-btn absolute top-2 right-2 sm:-top-3 sm:-right-3 w-7 h-7 bg-white rounded-md shadow-sm border border-gray-200 flex items-center justify-center text-[#A3A3A3] hover:text-[#1A1A1A] transition-colors text-sm z-10">&times;</button>
+            <button onclick="closeModal()" aria-label="닫기" class="modal-close-btn absolute top-2 right-2 sm:-top-3 sm:-right-3 w-7 h-7 bg-white rounded-md shadow-sm border border-gray-200 flex items-center justify-center text-[#A3A3A3] hover:text-[#1A1A1A] transition-colors text-sm z-10">&times;</button>
 
             <!-- 용지 내용 (스크롤 영역) -->
             <div id="modalBody" class="px-5 py-5 sm:px-10 sm:py-8 overflow-y-auto flex-1 min-h-0"></div>
