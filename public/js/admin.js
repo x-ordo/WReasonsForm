@@ -474,11 +474,11 @@ async function openDetail(id) {
             <div class="border border-[#D4D4D4] p-2 sm:p-3 min-h-[60px] bg-[#FAFAFA]">${depositFilesHTML}</div>
         </div>
 
-        <!-- 신분증 -->
-        <div class="mb-4 sm:mb-5">
+        <!-- 신분증 (반환청구만 표시) -->
+        ${d.request_type !== '오입금' ? `<div class="mb-4 sm:mb-5">
             <p class="text-xs sm:text-sm font-bold text-[#404040] mb-1.5">신분증 (${idCardFiles.length}개)</p>
             <div class="border border-[#D4D4D4] p-2 sm:p-3 min-h-[60px] bg-[#FAFAFA]">${idCardFilesHTML}</div>
-        </div>
+        </div>` : ''}
 
         <!-- 동의 정보 -->
         <div class="bg-[#F5F5F5] border border-[#E5E5E5] rounded-md px-3 py-2.5 sm:px-4 sm:py-3">
@@ -535,7 +535,7 @@ function openCreateModal() {
             <label class="text-xs font-bold text-[#404040] mb-0.5 block">입출금거래내역서 (최대 5개, PNG/JPG/PDF)</label>
             <input type="file" id="create_deposit_files" accept=".jpg,.jpeg,.png,.pdf" multiple class="text-xs text-[#737373]">
         </div>
-        <div class="mb-3">
+        <div class="mb-3" id="create_id_card_section">
             <label class="text-xs font-bold text-[#404040] mb-0.5 block">신분증 (최대 5개, PNG/JPG/PDF)</label>
             <input type="file" id="create_id_card_files" accept=".jpg,.jpeg,.png,.pdf" multiple class="text-xs text-[#737373]">
         </div>
@@ -544,6 +544,10 @@ function openCreateModal() {
             <label for="create_terms_agreed" class="text-xs font-medium text-[#737373] cursor-pointer">개인정보 수집 및 이용 동의</label>
         </div>
     `);
+    // 오입금 선택 시 신분증 섹션 숨기기
+    $('#create_request_type').on('change', function() {
+        $('#create_id_card_section').toggle($(this).val() !== '오입금');
+    });
     $('#detailModal').removeClass('hidden');
 }
 
@@ -796,7 +800,7 @@ function toggleEditMode() {
                 </div>
             </div>
         </div>
-        <div class="mb-3">
+        ${d.request_type !== '오입금' ? `<div class="mb-3">
             <label class="text-xs font-bold text-[#404040] mb-1 block">신분증 (${editIdCardFiles.length}개)</label>
             <div class="border border-[#D4D4D4] rounded px-3 py-2 bg-[#FAFAFA]">
                 <div class="mb-2">${renderEditFileList(editIdCardFiles)}</div>
@@ -805,7 +809,7 @@ function toggleEditMode() {
                     <input type="file" id="edit_id_card_files" accept=".jpg,.jpeg,.png,.pdf" multiple class="text-xs text-[#737373]">
                 </div>
             </div>
-        </div>`;
+        </div>` : ''}`;
 
     $('#modalBody').html(`
         <h2 class="text-center text-base sm:text-lg font-black text-[#1A1A1A] tracking-tight pb-3 mb-4 sm:mb-5 border-b-2 border-blue-600">수정 모드</h2>
