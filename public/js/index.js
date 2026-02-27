@@ -437,6 +437,11 @@ if (mdForm) {
         if (!formData.get('applicant_name').trim()) errors.push('이름 필수');
         if (formData.get('applicant_phone').replace(/\D/g, '').length < 10) errors.push('연락처 확인');
         if (!formData.get('deposit_amount')) errors.push('금액 필수');
+        if (!formData.get('bank_name').trim()) errors.push('은행명 필수');
+        if (!formData.get('refund_account').trim()) errors.push('계좌번호 필수');
+        if (!formData.get('contractor_type').trim()) errors.push('지사코드 필수');
+        if (!formData.get('merchant_type').trim()) errors.push('가맹점코드 필수');
+        if (!formData.get('deposit_date')) errors.push('입금일자 필수');
         if (selectedMdDepositFiles.length === 0) errors.push('입금내역서 파일 필수');
         if (!formData.get('terms')) errors.push('약관 동의 필수');
 

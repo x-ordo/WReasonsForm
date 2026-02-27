@@ -401,7 +401,7 @@ async function openDetail(id) {
 
     $('#modalBody').html(`
         <!-- 문서 제목 -->
-        <h2 class="text-center text-base sm:text-lg font-black text-[#1A1A1A] tracking-tight pb-3 mb-4 sm:mb-5 border-b-2 border-[#1A1A1A]">반환 청구 사유서</h2>
+        <h2 class="text-center text-base sm:text-lg font-black text-[#1A1A1A] tracking-tight pb-3 mb-4 sm:mb-5 border-b-2 border-[#1A1A1A]">${d.request_type === '오입금' ? '오입금 포인트 신청서' : '반환 청구 사유서'}</h2>
 
         <!-- 상단: 코드 + 상태 -->
         <div class="flex justify-between items-start mb-4 sm:mb-5">
