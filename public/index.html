@@ -14,7 +14,7 @@
 
     <nav class="bg-white shadow-sm border-b sticky top-0 z-50">
         <div class="max-w-4xl mx-auto px-4 py-3 sm:py-4 flex justify-between items-center gap-3">
-            <a href="/public/index.html" class="text-lg sm:text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors no-underline whitespace-nowrap">반환 청구 사유서 Form</a>
+            <a href="/public/index.html" class="text-lg sm:text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors no-underline whitespace-nowrap">사유서 Form</a>
             <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                 <span id="liveClock" class="text-sm font-bold text-gray-400 tabular-nums tracking-tight hidden sm:inline"></span>
                 <button onclick="showStatusCheck()" class="text-xs sm:text-sm font-black text-white bg-blue-600 hover:bg-blue-700 px-3 sm:px-4 py-2 rounded-lg transition-all shadow-sm active:scale-[0.97] whitespace-nowrap">진행 상태 조회</button>
@@ -22,11 +22,19 @@
         </div>
     </nav>
 
+    <div class="max-w-6xl mx-auto px-4 pt-6 sm:pt-8">
+        <div class="flex border-b border-gray-200" id="formTabs">
+            <button onclick="showRefundTab()" id="tabRefund" class="tab-btn tab-active px-5 py-3 text-sm font-black border-b-2 border-blue-600 text-blue-600 transition-all">반환 청구 사유서</button>
+            <button onclick="showMisdepositTab()" id="tabMisdeposit" class="tab-btn px-5 py-3 text-sm font-black border-b-2 border-transparent text-gray-400 hover:text-gray-600 transition-all">오입금 포인트 신청서</button>
+        </div>
+    </div>
+
     <main class="max-w-6xl mx-auto px-4 py-6 sm:py-10">
 
         <div id="submitSection" class="bg-white rounded-lg shadow-sm p-5 sm:p-8 border border-gray-200">
 
             <form id="requestForm">
+                <input type="hidden" name="request_type" value="반환청구">
                 <!-- 경고배너 (full width, 그리드 밖) -->
                 <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-6 text-center">
                     <p class="text-amber-800 font-bold text-sm">본 사유서는 은행에 제출될 공식 자료입니다. 정확하게 작성해 주세요.</p>
@@ -152,6 +160,114 @@
 
                     <button type="submit" class="w-full bg-blue-600 text-white font-black py-3.5 rounded-lg hover:bg-blue-700 transition-all shadow-sm active:scale-[0.98] text-lg">
                         사유서 제출하기
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div id="misdepositSection" class="hidden bg-white rounded-lg shadow-sm p-5 sm:p-8 border border-gray-200">
+
+            <form id="misdepositForm">
+                <input type="hidden" name="request_type" value="오입금">
+                <!-- 경고배너 -->
+                <div class="bg-orange-50 border border-orange-200 rounded-lg px-4 py-3 mb-6 text-center">
+                    <p class="text-orange-800 font-bold text-sm">오입금 확인 후 포인트로 전환 처리됩니다. 정확한 입금 내역을 첨부해 주세요.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-x-8">
+
+                    <h3 class="text-lg font-black text-orange-600 mb-0 tracking-widest flex items-center gap-2 md:col-span-2 lg:order-none order-1">
+                        <span class="w-1 h-4 bg-orange-600 rounded-full"></span> 업체·신청인 정보
+                    </h3>
+                    <h3 class="text-lg font-black text-orange-600 mb-0 tracking-widest flex items-center gap-2 md:col-span-2 lg:order-none order-[9]">
+                        <span class="w-1 h-4 bg-orange-600 rounded-full"></span> 입금 정보
+                    </h3>
+
+                    <!-- Row 1: 지사코드 / 가맹점코드 / 입금일자 / 입금액 -->
+                    <div class="lg:order-none order-2">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">지사코드 (구분코드1)</label>
+                        <input type="text" name="contractor_type" maxlength="30" placeholder="한글, 영어, 숫자 (최대 30자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none font-bold text-base">
+                    </div>
+                    <div class="lg:order-none order-3">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">가맹점코드 (구분코드2)</label>
+                        <input type="text" name="merchant_type" maxlength="30" placeholder="한글, 영어, 숫자 (최대 30자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none font-bold text-base">
+                    </div>
+                    <div class="lg:order-none order-[10]">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">입금 보낸 일자</label>
+                        <input type="date" name="deposit_date" id="md_date_deposit" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none font-bold text-base">
+                    </div>
+                    <div class="lg:order-none order-[11]">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">입금액 (원)</label>
+                        <input type="text" name="deposit_amount" id="md_input_amount" placeholder="숫자만 입력" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none transition-all font-black text-base text-orange-600">
+                    </div>
+
+                    <!-- Row 2: 신청인이름 / 전화번호 / 상세사유 -->
+                    <div class="lg:order-none order-4">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">신청인 이름</label>
+                        <input type="text" name="applicant_name" maxlength="20" placeholder="예: 홍길동 (최대 20자)" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none transition-all font-bold text-base">
+                    </div>
+                    <div class="lg:order-none order-5">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">신청인 전화번호</label>
+                        <input type="tel" name="applicant_phone" id="md_input_phone" maxlength="13" placeholder="숫자만" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none transition-all font-bold text-base">
+                    </div>
+                    <div class="md:col-span-2 lg:row-span-2 lg:order-none order-[12] flex flex-col">
+                        <div class="flex justify-between items-baseline mb-1.5">
+                            <label class="block text-sm font-bold text-gray-500">상세 사유 (최대 200자)</label>
+                            <span id="md-char-count" class="text-xs font-bold text-gray-400 tracking-tighter">0 / 200</span>
+                        </div>
+                        <textarea id="md_input_details" name="details" maxlength="200" rows="3" class="w-full flex-1 border border-gray-200 rounded-lg px-4 py-4 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none transition-all resize-none font-medium text-gray-600 text-base" placeholder="오입금 포인트 전환 사유를 상세히 적어주세요."></textarea>
+                    </div>
+
+                    <!-- Row 3: 은행명 / 계좌번호 -->
+                    <div class="lg:order-none order-6">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">은행명</label>
+                        <input type="text" name="bank_name" maxlength="20" placeholder="예: 신한은행" required class="form-input-custom w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none font-bold text-base">
+                    </div>
+                    <div class="lg:order-none order-7">
+                        <label class="block text-sm font-bold text-gray-500 mb-1.5">출금 나간 계좌번호</label>
+                        <input type="text" name="refund_account" id="md_input_account" maxlength="16" placeholder="- 없이 숫자만 입력 (최대 16자)" required class="w-full border border-gray-200 rounded-lg px-4 py-3.5 focus:ring-4 focus:ring-orange-50 focus:border-orange-500 outline-none transition-all font-black text-base tracking-tighter">
+                    </div>
+
+                    <!-- 입금내역서 업로드 (신분증 없음) -->
+                    <div class="md:col-span-2 lg:col-span-4 lg:order-none order-[13]">
+                        <h4 class="text-sm font-black text-orange-500 mb-3 tracking-widest flex items-center gap-2">
+                            <span class="w-1 h-3 bg-orange-500 rounded-full"></span> 입금내역서
+                        </h4>
+
+                        <input id="md-deposit-file-upload" type="file" class="hidden" accept=".png,.jpg,.jpeg,.pdf" multiple>
+
+                        <div id="md-deposit-drop-zone" class="mt-1 flex flex-col justify-center items-center px-6 py-8 border-2 border-gray-200 border-dashed rounded-lg hover:bg-orange-50 hover:border-orange-400 transition-all cursor-pointer group">
+                            <svg class="h-10 w-10 text-gray-300 group-hover:text-orange-500 transition-colors mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                            <p class="text-gray-700 font-bold text-sm">입금내역서 파일을 이 곳에 끌어다 놓으세요</p>
+                            <p class="text-xs text-gray-400 mt-1">최대 5개, 10MB/개, PNG/JPG/PDF</p>
+                        </div>
+
+                        <div id="mdDepositFilePreview" class="hidden mt-3">
+                            <div class="flex flex-col gap-3 p-4 bg-orange-50 border border-orange-100 rounded-lg">
+                                <div class="flex items-center justify-between">
+                                    <p class="text-xs font-black text-orange-400 tracking-widest">입금내역서 (<span id="mdDepositFileCount">0</span>/5)</p>
+                                    <button type="button" onclick="clearAllMdDepositFiles()" class="text-xs font-bold text-red-400 hover:text-red-600 transition-colors">전체 삭제</button>
+                                </div>
+                                <div id="mdDepositFileList" class="space-y-2"></div>
+                                <button type="button" onclick="document.getElementById('md-deposit-file-upload').click()" class="text-xs font-bold text-orange-500 hover:text-orange-700 transition-colors mt-1" id="mdDepositAddMoreBtn">+ 파일 추가</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- 약관 동의 + 제출 버튼 -->
+                <div class="mt-8 space-y-5">
+                    <div class="flex items-center justify-center bg-gray-50 px-4 py-3.5 rounded-lg border border-gray-200">
+                        <input id="md_terms" name="terms" type="checkbox" required class="w-5 h-5 text-orange-600 border-gray-300 rounded focus:ring-orange-500 cursor-pointer flex-shrink-0">
+                        <div class="ml-3 text-sm sm:text-base font-bold text-gray-700 cursor-pointer underline decoration-orange-200 underline-offset-4" onclick="document.getElementById('md_terms').click()">
+                            개인정보 수집 및 이용 동의 (필수)
+                            <button type="button" onclick="event.stopPropagation(); openTermsModal()" class="text-xs font-black bg-orange-600 text-white px-2.5 py-0.5 rounded ml-2 shadow-sm tracking-tighter">보기</button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-orange-600 text-white font-black py-3.5 rounded-lg hover:bg-orange-700 transition-all shadow-sm active:scale-[0.98] text-lg">
+                        오입금 포인트 신청하기
                     </button>
                 </div>
             </form>
