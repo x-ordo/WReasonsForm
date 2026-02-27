@@ -116,6 +116,15 @@ IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='Requests' 
 IF COL_LENGTH('RequestFiles', 'category') IS NULL
     ALTER TABLE RequestFiles ADD category NVARCHAR(20) NOT NULL DEFAULT N'신분증';
 
+-- 4-5. request_type 컬럼 추가 (반환청구 / 오입금 구분)
+IF COL_LENGTH('Requests', 'request_type') IS NULL
+BEGIN
+    ALTER TABLE Requests ADD request_type NVARCHAR(10) NOT NULL
+        CONSTRAINT DF_Requests_request_type DEFAULT N'반환청구';
+    ALTER TABLE Requests ADD CONSTRAINT CK_Requests_request_type
+        CHECK (request_type IN (N'반환청구', N'오입금'));
+END
+
 -- 4-4. 과대 컬럼 축소 (실제 데이터 범위에 맞춤)
 --       UNIQUE/INDEX 제약 조건이 걸린 컬럼은 DROP → ALTER → 재생성 필요
 
@@ -285,3 +294,7 @@ EXEC sp_addextendedproperty N'MS_Description', N'파일 카테고리 (입출금�
 
 BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'uploaded_at'; END TRY BEGIN CATCH END CATCH;
 EXEC sp_addextendedproperty N'MS_Description', N'업로드 일시', N'SCHEMA',N'dbo', N'TABLE',N'RequestFiles', N'COLUMN',N'uploaded_at';
+
+-- ─── Requests.request_type ───
+BEGIN TRY EXEC sp_dropextendedproperty N'MS_Description', N'SCHEMA',N'dbo', N'TABLE',N'Requests', N'COLUMN',N'request_type'; END TRY BEGIN CATCH END CATCH;
+EXEC sp_addextendedproperty N'MS_Description', N'신청 유형 (반환청구 또는 오입금). CHECK 제약으로 2개 값만 허용.', N'SCHEMA',N'dbo', N'TABLE',N'Requests', N'COLUMN',N'request_type';
