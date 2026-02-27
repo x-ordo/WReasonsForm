@@ -33,6 +33,30 @@ async function safeFetch(url, options = {}, timeoutMs = 30000) {
 
 let isSubmitting = false;
 
+// ── 탭 전환 ──
+function showRefundTab() {
+    document.getElementById('submitSection').classList.remove('hidden');
+    document.getElementById('misdepositSection').classList.add('hidden');
+    document.getElementById('statusSection').classList.add('hidden');
+    document.getElementById('tabRefund').classList.add('tab-active', 'border-blue-600', 'text-blue-600');
+    document.getElementById('tabRefund').classList.remove('border-transparent', 'text-gray-400');
+    document.getElementById('tabMisdeposit').classList.remove('tab-active', 'border-orange-600', 'text-orange-600');
+    document.getElementById('tabMisdeposit').classList.add('border-transparent', 'text-gray-400');
+    window.scrollTo(0, 0);
+}
+function showMisdepositTab() {
+    document.getElementById('submitSection').classList.add('hidden');
+    document.getElementById('misdepositSection').classList.remove('hidden');
+    document.getElementById('statusSection').classList.add('hidden');
+    document.getElementById('tabMisdeposit').classList.add('tab-active', 'border-orange-600', 'text-orange-600');
+    document.getElementById('tabMisdeposit').classList.remove('border-transparent', 'text-gray-400');
+    document.getElementById('tabRefund').classList.remove('tab-active', 'border-blue-600', 'text-blue-600');
+    document.getElementById('tabRefund').classList.add('border-transparent', 'text-gray-400');
+    window.scrollTo(0, 0);
+}
+window.showRefundTab = showRefundTab;
+window.showMisdepositTab = showMisdepositTab;
+
 // ── 입출금거래내역서 파일 관리 ──
 const depositDropZone = document.getElementById('deposit-drop-zone');
 const depositFileInput = document.getElementById('deposit-file-upload');
@@ -173,6 +197,29 @@ function renderIdFileList() {
 function removeIdFile(idx) { selectedIdFiles.splice(idx, 1); renderIdFileList(); }
 function clearAllIdFiles() { selectedIdFiles = []; idFileInput.value = ''; renderIdFileList(); }
 
+// ── 오입금 입금내역서 파일 관리 ──
+const mdDepositDropZone = document.getElementById('md-deposit-drop-zone');
+const mdDepositFileInput = document.getElementById('md-deposit-file-upload');
+const mdDepositFilePreview = document.getElementById('mdDepositFilePreview');
+const mdDepositFileListEl = document.getElementById('mdDepositFileList');
+const mdDepositFileCountEl = document.getElementById('mdDepositFileCount');
+let selectedMdDepositFiles = [];
+
+if (mdDepositDropZone && mdDepositFileInput) {
+    setupDropZone(mdDepositDropZone, mdDepositFileInput, selectedMdDepositFiles, 5, (files) => {
+        handleFilesGeneric(files, selectedMdDepositFiles, mdDepositFileInput, 5, '입금내역서');
+        renderMdDepositFileList();
+    });
+}
+function renderMdDepositFileList() {
+    renderFileListGeneric(selectedMdDepositFiles, mdDepositDropZone, mdDepositFilePreview, mdDepositFileListEl, mdDepositFileCountEl, 'mdDepositAddMoreBtn', 'removeMdDepositFile', 'border-orange-100');
+}
+function removeMdDepositFile(idx) { selectedMdDepositFiles.splice(idx, 1); renderMdDepositFileList(); }
+function clearAllMdDepositFiles() { selectedMdDepositFiles = []; mdDepositFileInput.value = ''; renderMdDepositFileList(); }
+window.clearAllMdDepositFiles = clearAllMdDepositFiles;
+window.removeMdDepositFile = removeMdDepositFile;
+window.renderMdDepositFileList = renderMdDepositFileList;
+
 const kstOpts = { timeZone: 'Asia/Seoul' };
 const todayKST = new Date().toLocaleDateString('sv-SE', kstOpts);
 const dateDepositEl = document.getElementById('date_deposit');
@@ -223,6 +270,61 @@ const statusCodeEl = document.getElementById('status_code');
 if (statusCodeEl) {
     statusCodeEl.addEventListener('input', e => {
         e.target.value = e.target.value.replace(/[^a-zA-Z0-9\-]/g, '').toUpperCase();
+    });
+}
+
+// ── 오입금 폼 입력 핸들러 ──
+const mdDateDepositEl = document.getElementById('md_date_deposit');
+if (mdDateDepositEl) {
+    mdDateDepositEl.max = todayKST;
+    mdDateDepositEl.value = todayKST;
+}
+
+const mdInputPhoneEl = document.getElementById('md_input_phone');
+if (mdInputPhoneEl) {
+    mdInputPhoneEl.addEventListener('input', e => {
+        let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+        if (v.length > 3 && v.length <= 7) v = v.slice(0, 3) + '-' + v.slice(3);
+        else if (v.length > 7) v = v.slice(0, 3) + '-' + v.slice(3, 7) + '-' + v.slice(7);
+        e.target.value = v;
+    });
+}
+
+const mdInputAmountEl = document.getElementById('md_input_amount');
+if (mdInputAmountEl) {
+    mdInputAmountEl.addEventListener('input', e => {
+        let v = e.target.value.replace(/\D/g, '');
+        if (v.length > 10) v = v.slice(0, 10);
+        if (parseInt(v) > 9999999999) v = "9999999999";
+        e.target.value = v.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    });
+}
+
+const mdInputAccountEl = document.getElementById('md_input_account');
+if (mdInputAccountEl) {
+    mdInputAccountEl.addEventListener('input', e => {
+        e.target.value = e.target.value.replace(/\D/g, '').slice(0, 16);
+    });
+}
+
+const mdDetailsInput = document.getElementById('md_input_details');
+const mdCharCount = document.getElementById('md-char-count');
+if (mdDetailsInput && mdCharCount) {
+    let mdDetailsComposing = false;
+    mdDetailsInput.addEventListener('compositionstart', () => { mdDetailsComposing = true; });
+    mdDetailsInput.addEventListener('compositionend', () => {
+        mdDetailsComposing = false;
+        mdDetailsInput.value = stripSymbolsText(mdDetailsInput.value);
+        mdCharCount.textContent = `${mdDetailsInput.value.length} / 200`;
+        if (mdDetailsInput.value.length >= 200) mdCharCount.classList.add('text-red-500');
+        else mdCharCount.classList.remove('text-red-500');
+    });
+    mdDetailsInput.addEventListener('input', () => {
+        if (mdDetailsComposing) return;
+        mdDetailsInput.value = stripSymbolsText(mdDetailsInput.value);
+        mdCharCount.textContent = `${mdDetailsInput.value.length} / 200`;
+        if (mdDetailsInput.value.length >= 200) mdCharCount.classList.add('text-red-500');
+        else mdCharCount.classList.remove('text-red-500');
     });
 }
 
@@ -286,6 +388,9 @@ if (form) {
         if (selectedIdFiles.length === 0) errors.push('신분증 파일 필수');
         if (!formData.get('terms')) errors.push('약관 동의 필수');
 
+        const amountRaw = Number(formData.get('deposit_amount').replace(/,/g, ''));
+        if (amountRaw < 2000000) errors.push('반환 청구는 200만원 이상만 신청 가능합니다');
+
         if (errors.length > 0) {
             Swal.fire({ icon:'warning', title:'입력 누락', html: errors.join('<br>') });
             return;
@@ -319,6 +424,54 @@ if (form) {
     });
 }
 
+const mdForm = document.getElementById('misdepositForm');
+if (mdForm) {
+    const mdSubmitBtn = mdForm.querySelector('button[type="submit"]');
+    const mdSubmitBtnOrigText = mdSubmitBtn.textContent;
+    mdForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        if (isSubmitting) return;
+
+        const formData = new FormData(mdForm);
+        const errors = [];
+        if (!formData.get('applicant_name').trim()) errors.push('이름 필수');
+        if (formData.get('applicant_phone').replace(/\D/g, '').length < 10) errors.push('연락처 확인');
+        if (!formData.get('deposit_amount')) errors.push('금액 필수');
+        if (selectedMdDepositFiles.length === 0) errors.push('입금내역서 파일 필수');
+        if (!formData.get('terms')) errors.push('약관 동의 필수');
+
+        if (errors.length > 0) {
+            Swal.fire({ icon:'warning', title:'입력 누락', html: errors.join('<br>') });
+            return;
+        }
+
+        isSubmitting = true;
+        mdSubmitBtn.disabled = true;
+        mdSubmitBtn.textContent = '제출 중...';
+
+        formData.set('deposit_amount', formData.get('deposit_amount').replace(/,/g, ''));
+        formData.set('terms_agreed', formData.get('terms') ? '1' : '0');
+        selectedMdDepositFiles.forEach(f => formData.append('deposit_files', f, f.name));
+
+        try {
+            const { ok, data: res } = await safeFetch('/api/request', { method: 'POST', body: formData }, 60000);
+            if (ok && res.success) {
+                downloadCodeAsTxt(res.requestCode);
+                const code = String(res.requestCode).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+                let copied = false;
+                try { const ta = document.createElement('textarea'); ta.value = res.requestCode; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); copied = document.execCommand('copy'); document.body.removeChild(ta); } catch(e) {}
+                Swal.fire({ icon:'success', title:'제출 완료', html:`<p class="text-sm text-gray-500 mt-2">식별코드: <strong class="text-orange-600 text-xl">${code}</strong></p><p class="text-xs text-gray-400 mt-1">${copied ? '클립보드에 복사되었습니다' : '식별코드를 메모해 주세요'}</p><p class="text-xs text-green-600 mt-1">식별코드 파일이 다운로드되었습니다</p>` })
+                .then(() => location.reload());
+            } else { Swal.fire('오류', res.error || '제출에 실패했습니다.', 'error'); }
+        } catch (err) { console.error('Submit error:', err); Swal.fire('오류', err.message, 'error'); }
+        finally {
+            isSubmitting = false;
+            mdSubmitBtn.disabled = false;
+            mdSubmitBtn.textContent = mdSubmitBtnOrigText;
+        }
+    });
+}
+
 function downloadCodeAsTxt(requestCode) {
     const now = new Date();
     const kstStr = now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -345,8 +498,23 @@ function downloadCodeAsTxt(requestCode) {
     document.body.removeChild(a);
 }
 
-function showStatusCheck() { document.getElementById('submitSection').classList.add('hidden'); document.getElementById('statusSection').classList.remove('hidden'); window.scrollTo(0,0); }
-function showSubmit() { document.getElementById('statusSection').classList.add('hidden'); document.getElementById('submitSection').classList.remove('hidden'); }
+function showStatusCheck() {
+    document.getElementById('submitSection').classList.add('hidden');
+    document.getElementById('misdepositSection').classList.add('hidden');
+    document.getElementById('statusSection').classList.remove('hidden');
+    document.getElementById('formTabs').classList.add('hidden');
+    window.scrollTo(0,0);
+}
+function showSubmit() {
+    document.getElementById('statusSection').classList.add('hidden');
+    document.getElementById('formTabs').classList.remove('hidden');
+    // Restore whichever tab was active
+    if (document.getElementById('tabMisdeposit').classList.contains('tab-active')) {
+        showMisdepositTab();
+    } else {
+        showRefundTab();
+    }
+}
 async function checkStatus() {
     const code = document.getElementById('status_code').value.trim();
     if (!code) {
