@@ -54,18 +54,20 @@ const FIELD_LABELS = {
 };
 
 // ── 식별코드 생성 (MAX 기반 + UNIQUE 제약 재시도) ──
-async function generateRequestCode(poolOrTx) {
+async function generateRequestCode(poolOrTx, requestType = '반환청구') {
+    const typePrefix = requestType === '오입금' ? 'M' : 'R';
     const date = new Date();
     const datePrefix = `${date.getFullYear().toString().slice(-2)}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}`;
+    const fullPrefix = `${typePrefix}-${datePrefix}`;
 
     const seqResult = await poolOrTx.request()
-        .input('prefix', mssql.NVarChar, `${datePrefix}-%`)
-        .query("SELECT ISNULL(MAX(CAST(SUBSTRING(request_code, 8, 3) AS INT)), 0) + 1 AS next_seq FROM Requests WHERE request_code LIKE @prefix");
+        .input('prefix', mssql.NVarChar, `${fullPrefix}-%`)
+        .query("SELECT ISNULL(MAX(CAST(SUBSTRING(request_code, 10, 3) AS INT)), 0) + 1 AS next_seq FROM Requests WHERE request_code LIKE @prefix");
     let nextSeq = seqResult.recordset[0].next_seq;
 
     for (let attempt = 0; attempt < 5; attempt++) {
         const rand = crypto.randomBytes(2).toString('hex').toUpperCase().slice(0, 3);
-        const requestCode = `${datePrefix}-${String(nextSeq).padStart(3, '0')}-${rand}`;
+        const requestCode = `${fullPrefix}-${String(nextSeq).padStart(3, '0')}-${rand}`;
         try {
             // 유효성만 확인 — 실제 INSERT 시 UNIQUE 제약이 동시성 가드 역할
             const dup = await poolOrTx.request()
@@ -445,7 +447,7 @@ app.post('/api/request', submitLimiter, upload.fields([{ name: 'deposit_files', 
         const transaction = new mssql.Transaction(pool);
         await transaction.begin();
         try {
-            const requestCode = await generateRequestCode(transaction);
+            const requestCode = await generateRequestCode(transaction, requestType);
 
             const allFiles = [...depositFiles, ...idCardFiles];
             const firstFile = allFiles.length > 0 ? allFiles[0].filename : null;
@@ -526,16 +528,16 @@ const statusLimiter = rateLimit({
 });
 
 // Status Check (Public)
-const REQUEST_CODE_RE = /^\d{6}-\d{3}-[A-Z0-9]{3}$/;
+const REQUEST_CODE_RE = /^([RM]-)?\d{6}-\d{3}-[A-Z0-9]{3}$/;
 app.get('/api/status/:code', statusLimiter, async (req, res) => {
     if (!REQUEST_CODE_RE.test(req.params.code)) {
-        return res.status(400).json({ success: false, error: '식별코드 형식이 올바르지 않습니다. (예: 260222-001-ABC)' });
+        return res.status(400).json({ success: false, error: '식별코드 형식이 올바르지 않습니다. (예: R-260222-001-ABC)' });
     }
     try {
         const pool = await poolPromise;
         const result = await pool.request()
             .input('code', mssql.NVarChar, req.params.code)
-            .query('SELECT applicant_name, status, created_at FROM Requests WHERE request_code = @code');
+            .query('SELECT applicant_name, status, created_at, request_type FROM Requests WHERE request_code = @code');
         if (result.recordset.length > 0) {
             const row = result.recordset[0];
             const name = row.applicant_name || '';
@@ -766,7 +768,7 @@ app.post('/api/admin/request', authMiddleware, upload.fields([{ name: 'deposit_f
         const transaction = new mssql.Transaction(pool);
         await transaction.begin();
         try {
-            const requestCode = await generateRequestCode(transaction);
+            const requestCode = await generateRequestCode(transaction, requestType);
 
             const adminDepositFiles = (req.files && req.files.deposit_files) || [];
             const adminIdCardFiles = (req.files && req.files.id_card_files) || [];

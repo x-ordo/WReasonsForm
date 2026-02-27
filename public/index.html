@@ -287,15 +287,18 @@
 
             <div class="space-y-6">
                 <div class="flex gap-2">
-                    <input type="text" id="status_code" placeholder="식별코드 입력 (예: 260222-001-ABC)" maxlength="15" class="flex-1 border border-gray-200 rounded-lg py-3.5 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 font-bold text-lg tracking-tight placeholder:text-gray-300 placeholder:font-medium">
+                    <input type="text" id="status_code" placeholder="식별코드 입력 (예: R-260222-001-ABC)" maxlength="18" class="flex-1 border border-gray-200 rounded-lg py-3.5 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 font-bold text-lg tracking-tight placeholder:text-gray-300 placeholder:font-medium">
                     <button onclick="checkStatus()" class="bg-[#1A1A1A] text-white px-6 py-3.5 rounded-lg font-bold hover:bg-black transition-all text-base whitespace-nowrap">조회</button>
                 </div>
 
                 <div id="statusResult" class="hidden">
                     <div class="border border-gray-200 rounded-lg overflow-hidden">
-                        <div class="bg-[#FAFAFA] px-6 py-5 border-b border-gray-200">
-                            <p class="text-sm font-bold text-gray-400 mb-1.5">처리 상태</p>
-                            <h3 id="res_status" class="text-3xl font-black text-[#1A1A1A] tracking-tight"></h3>
+                        <div class="bg-[#FAFAFA] px-6 py-5 border-b border-gray-200 flex justify-between items-start">
+                            <div>
+                                <p class="text-sm font-bold text-gray-400 mb-1.5">처리 상태</p>
+                                <h3 id="res_status" class="text-3xl font-black text-[#1A1A1A] tracking-tight"></h3>
+                            </div>
+                            <span id="res_type_badge" class="inline-block px-3 py-1 rounded-full text-xs font-bold mt-1"></span>
                         </div>
                         <div class="px-6 py-5 flex justify-between items-end">
                             <div>

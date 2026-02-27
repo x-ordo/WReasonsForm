@@ -533,6 +533,10 @@ async function checkStatus() {
             document.getElementById('res_status').textContent = res.data.status;
             document.getElementById('res_name').textContent = res.data.applicant_name;
             document.getElementById('res_date').textContent = new Date(res.data.created_at).toLocaleString('ko-KR');
+            const badge = document.getElementById('res_type_badge');
+            const isMisdeposit = res.data.request_type === '오입금';
+            badge.textContent = isMisdeposit ? '오입금' : '반환청구';
+            badge.className = `inline-block px-3 py-1 rounded-full text-xs font-bold mt-1 ${isMisdeposit ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`;
         } else {
             document.getElementById('statusResult').classList.add('hidden');
             Swal.fire('조회 실패', res.error || '해당 식별코드를 찾을 수 없습니다.', 'error');
